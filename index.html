@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>数据接收平台</title>
+</head>
+
+<body>
+    <h1>TCP 服务状态</h1>
+    <p>本机IP: <span id="ip"></span></p>
+    <p>已开启的TCP端口: <span id="ports"></span></p>
+    <form id="portForm">
+        <label for="newPort">新增TCP端口:</label>
+        <input type="number" id="newPort" placeholder="输入端口号">
+        <button type="submit">提交</button>
+    </form>
+    <p>注意此页面修改后需要打开系统防火墙放行端口</p>
+    <a href="/history">获取全部历史数据</a>
+    <a href="/log">查看服务器log</a>
+    <a href="/select">通过条件查询历史数据</a>
+    <a href="/img">查看平均、最大、最小zhi</a>
+    <script>
+        // 获取本机IP并显示
+        fetch('/getIP')
+          .then(response => response.json())
+          .then(data => document.getElementById('ip').innerHTML = data.ip);
+
+        // 获取已开启的TCP端口并显示
+        fetch('/getTCPports')
+          .then(response => response.json())
+          .then(data => document.getElementById('ports').innerHTML = data.ports.join(', '));
+
+        // 处理提交端口表单的事件
+        document.getElementById('portForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const port = document.getElementById('newPort').value;
+            const requestBody = JSON.stringify({port: port});
+            console.log('即将发送的请求体数据:', requestBody); // 打印出请求体数据
+            fetch('/setTCPport', {
+                method: 'post',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: requestBody
+            }).then(response => response.json())
+            .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        location.reload();
+                    }
+                });
+        });
+    </script>
+</body>
+
+</html>

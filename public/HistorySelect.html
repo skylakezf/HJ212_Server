@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>组合查询数据</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    table,
+    th,
+    td {
+      border: 1px solid #ddd;
+    }
+
+    th,
+    td {
+      padding: 8px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f4f4f4;
+    }
+
+    /* 添加样式以保留格式化的JSON */
+    pre {
+      white-space: pre-wrap; /* 保留空格和换行 */
+      word-wrap: break-word; /* 长文本自动换行 */
+      margin: 0;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>数据查询</h1>
+
+  <!-- MN查询表单 -->
+  <form id="data_MN_form">
+    <label for="MN">MN:</label>
+    <input type="number" id="MN" placeholder="输入MN号">
+  </form>
+
+  <!-- 日期时间查询表单 -->
+  <form id="data_Time_form">
+    <label for="date">数据日期:</label>
+    <input type="date" id="date" placeholder="输入日期">
+    <label for="time">数据时间:</label>
+    <input type="time" id="time" placeholder="输入时间">
+  </form>
+
+  <!-- IP查询表单 -->
+  <form id="data_IP_form">
+    <label for="date">IP:</label>
+    <input type="text" id="IP" placeholder="输入IP">
+  </form>
+
+  <!-- 数据标识查询表单 -->
+  <form id="data_Flag_form">
+    <label for="data_Flag">Flag标识:</label>
+    <input type="radio" name="FlagOption" id="data_Flag_N" value="N">N
+    <input type="radio" name="FlagOption" id="data_Flag_D" value="D">D
+  </form>
+
+  <form id="data_CN_form"></form>
+    <label for="data_CN_form">数据标识:</label>
+    <input type="radio" name="CN_Option" id="data_CN_2051" value="2051">2051 分钟数据
+    <input type="radio" name="CN_Option" id="data_CN_2061" value="2061">2061 小时数据
+    <input type="radio" name="CN_Option" id="data_CN_2031" value="2031">2031 日数据
+  </form>
+
+  <!-- 统一的查询按钮 -->
+  <button type="button" id="combinedQueryButton">查询</button>
+
+  <!-- 数据展示区域 -->
+  <h2>查询结果</h2>
+  <div id="resultContainer">
+    <table id="resultTable">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>MN</th>
+          <th>CN</th>
+          <th>日期时间</th>
+          <th>污染物数据</th>
+          <th>来源IP</th>
+          <th>最后更新</th>
+          <th>原始数据</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- 动态插入查询结果 -->
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    document.getElementById('combinedQueryButton').addEventListener('click', function () {
+      let dataToSend = {};
+      const data_MN = document.getElementById('MN').value;
+      const date = document.getElementById('date').value;
+      const time = document.getElementById('time').value;
+      const IP = document.getElementById('IP').value;
+      // 安全获取选中单选框的值
+      const selectedFlag = document.querySelector('input[name="FlagOption"]:checked');
+      const data_Flag = selectedFlag ? selectedFlag.value : null;
+
+      const selected_CN_Flag = document.querySelector('input[name="CN_Option"]:checked');
+      const CN_Flag = selected_CN_Flag ? selected_CN_Flag.value : null;
+
+      if (data_MN) {
+        dataToSend.MN = data_MN;
+      }
+      if (date && time) {
+        const combinedDateTime = `${date} ${time}`;
+        dataToSend.Time = combinedDateTime;
+      }
+      if (data_Flag) {
+        dataToSend.Flag = data_Flag;
+      }
+      if (CN_Flag) {
+        dataToSend.CN = CN_Flag;
+      }
+      if (IP) {
+        dataToSend.IP = '::ffff:' + IP;
+      }
+
+      const url = '/LookupData';
+      console.log('发送请求URL:', url);
+
+      // 发送POST请求
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(dataToSend)
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            alert(data.error);
+          } else {
+            renderResults(data.data); // 渲染查询结果
+          }
+        })
+        .catch(err => {
+          console.error('查询失败:', err);
+          alert('查询失败，请稍后重试。');
+        });
+    });
+
+    // 渲染查询结果
+    function renderResults(results) {
+      const tableBody = document.querySelector('#resultTable tbody');
+      tableBody.innerHTML = ''; // 清空表格内容
+
+      if (results.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="7">未查询到数据</td></tr>';
+        return;
+      }
+
+      results.forEach((item) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${item.id || 'N/A'}</td>
+          <td>${item.MN || 'N/A'}</td>
+          <td>${item.CN || 'N/A'}</td>
+          <td>${item.date || 'N/A'}</td>
+          <td>${formatJSON(item.pollutants)}</td>
+          <td>${item.source_ip || 'N/A'}</td>
+          <td>${item.last_update || 'N/A'}</td>
+          <td>${item.raw_data || 'N/A'}</td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+
+    // 格式化 JSON 字符串
+    function formatJSON(jsonString) {
+      try {
+        const json = JSON.parse(jsonString); // 尝试解析污染物数据
+        return `<pre>${JSON.stringify(json, null, 2)}</pre>`; // 格式化 JSON 输出并添加 pre 标签
+      } catch (err) {
+        return jsonString; // 如果解析失败，返回原始字符串
+      }
+    }
+  </script>
+</body>
+
+</html>

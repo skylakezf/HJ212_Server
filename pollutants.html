@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>污染物平均数据柱状图</title>
+  <script src="WEB_js/chart.js"></script>
+  <script src="WEB_js/pollutants_map.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+
+    canvas {
+      margin-top: 20px;
+    }
+
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+    }
+
+    table, th, td {
+      border: 1px solid #ddd;
+    }
+
+    th, td {
+      padding: 8px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f4f4f4;
+    }
+
+    #pollutantControl {
+      margin-top: 20px;
+    }
+
+    #pollutantControl label {
+      margin-right: 10px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>污染物数据柱状图</h1>
+
+  <!-- 数据查询 -->
+  <form id="data_MN_form">
+    <label for="MN">MN:</label>
+    <input type="number" id="MN" placeholder="输入MN号">
+  </form>
+
+  <!-- 数据标识选择 -->
+  <form id="data_CN_form">
+    <label for="data_CN_form">数据标识:</label>
+    <input type="radio" name="CN_Option" id="data_CN_2051" value="2051">2051 分钟数据
+    <input type="radio" name="CN_Option" id="data_CN_2061" value="2061">2061 小时数据
+    <input type="radio" name="CN_Option" id="data_CN_2031" value="2031">2031 日数据
+  </form>
+
+  <button id="fetchDataButton">获取数据</button>
+
+  <!-- 控制显示污染物 -->
+  <div id="pollutantControl">
+    <h3>选择隐藏的污染物：</h3>
+    <div id="pollutantList"></div>
+  </div>
+
+  <!-- 柱状图 -->
+  <canvas id="pollutantChart_avg" width="800" height="400"></canvas>
+  <canvas id="pollutantChart_max" width="800" height="400"></canvas>
+  <canvas id="pollutantChart_min" width="800" height="400"></canvas>
+  <!-- 数据表 -->
+  <h2>原始数据</h2>
+  <table id="resultTable">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>MN</th>
+        <th>日期时间</th>
+        <th>污染物数据</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- 动态插入数据 -->
+    </tbody>
+  </table>
+
+  <script>
+
+let parsedData = null;
+let hiddenPollutants = [];
+
+// 页面加载时从 localStorage 获取 hiddenPollutants
+window.addEventListener('load', function () {
+  const storedHiddenPollutants = localStorage.getItem('hiddenPollutants');
+  if (storedHiddenPollutants) {
+    hiddenPollutants = JSON.parse(storedHiddenPollutants);
+  }
+  console.log("Loaded hiddenPollutants from localStorage:", hiddenPollutants);
+
+  if (parsedData) {
+    renderPollutantControl(parsedData.pollutantNames, hiddenPollutants);
+  }
+});
+
+// 获取数据并渲染表格和图表
+function fetchDataAndRender() {
+  const MN = document.getElementById('MN').value;
+  const CN = document.querySelector('input[name="CN_Option"]:checked')?.value;
+
+  if (!MN) {
+    alert("请输入MN号！");
+    return;
+  }
+  if (!CN) {
+    alert("请选择数据标识！");
+    return;
+  }
+
+  fetch('/LookupData_10', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ MN, CN })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.error) {
+      alert(data.error);
+      return;
+    }
+
+    // 渲染表格数据
+    renderTable(data.data);
+
+    // 解析污染物数据并更新图表
+    parsedData = parsePollutants(data.data);
+    renderPollutantControl(parsedData.pollutantNames, hiddenPollutants);
+    updateChartWindow(parsedData, hiddenPollutants);
+  })
+  .catch(error => {
+    console.error("获取数据失败:", error);
+    alert("获取数据失败，请稍后重试。");
+  });
+}
+
+// 渲染表格
+function renderTable(results) {
+  const tableBody = document.querySelector('#resultTable tbody');
+  tableBody.innerHTML = '';
+  results.forEach(item => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${item.id || 'N/A'}</td>
+      <td>${item.MN || 'N/A'}</td>
+      <td>${item.date || 'N/A'}</td>
+      <td>
+        ${Object.keys(item.pollutants).filter(key => key.includes('-Avg') || key.includes('-Max') || key.includes('-Min'))
+          .map(key => {
+            const pollutantName = key.split('-')[0];
+            const displayName = pollutantsMapping[pollutantName] || pollutantName;
+            return `${displayName}：平均值 ${item.pollutants[`${pollutantName}-Avg`]}，最大值 ${item.pollutants[`${pollutantName}-Max`]}，最小值 ${item.pollutants[`${pollutantName}-Min`]}`;
+          })
+        .join('<br>')}
+      </td>
+    `;
+    tableBody.appendChild(row);
+  });
+}
+
+// 解析污染物数据
+function parsePollutants(data) {
+  const labels = [];
+  const pollutantsData = {};
+  const pollutantNames = new Set();
+
+  const pollutantKeys = Object.keys(data[0].pollutants).filter(key => key.includes('-Avg') || key.includes('-Max') || key.includes('-Min'));
+  pollutantKeys.forEach(key => {
+    const pollutantName = key.split('-')[0];
+    const displayName = pollutantsMapping[pollutantName] || pollutantName;
+    if (!pollutantsData[displayName]) {
+      pollutantsData[displayName] = { avgValues: [], maxValues: [], minValues: [] };
+    }
+    pollutantNames.add(displayName);
+  });
+
+  data.forEach(item => {
+    const pollutants = item.pollutants;
+    labels.push(pollutants.DataTime);
+
+    pollutantKeys.forEach(key => {
+      const pollutantName = key.split('-')[0];
+      const displayName = pollutantsMapping[pollutantName] || pollutantName;
+      const value = parseFloat(pollutants[key] || 0);
+      if (key.includes('-Avg')) pollutantsData[displayName].avgValues.push(value);
+      if (key.includes('-Max')) pollutantsData[displayName].maxValues.push(value);
+      if (key.includes('-Min')) pollutantsData[displayName].minValues.push(value);
+    });
+  });
+
+  return { labels, pollutantsData, pollutantNames: [...pollutantNames] };
+}
+// 页面加载时从 localStorage 获取 hiddenPollutants
+window.addEventListener('load', function () {
+  const storedHiddenPollutants = localStorage.getItem('hiddenPollutants');
+  if (storedHiddenPollutants) {
+    hiddenPollutants = JSON.parse(storedHiddenPollutants);
+  }
+  console.log("Loaded hiddenPollutants from localStorage:", hiddenPollutants);
+
+  if (parsedData) {
+    renderPollutantControl(parsedData.pollutantNames, hiddenPollutants);
+  }
+});
+
+function renderPollutantControl(pollutantNames, hiddenPollutantsParam) {
+  const controlDiv = document.getElementById('pollutantList');
+  controlDiv.innerHTML = '';  // 清空之前的列表
+
+  pollutantNames.forEach(name => {
+    const label = document.createElement('label');
+    label.innerHTML = `
+      <input type="checkbox" class="pollutantCheckbox" value="${name}" ${hiddenPollutantsParam.includes(name) ? 'checked' : ''}>
+      ${name}
+    `;
+    controlDiv.appendChild(label);
+    controlDiv.appendChild(document.createElement('br'));
+
+    label.querySelector('input').addEventListener('change', function () {
+      const pollutant = this.value;
+      console.log("Checkbox change detected. Pollutant:", pollutant, "Checked:", this.checked); // 输出勾选框状态
+
+      if (this.checked) {
+        // 如果勾选框被勾选，则从 hiddenPollutants 中移除该污染物
+        if (!hiddenPollutants.includes(pollutant)) {
+          hiddenPollutants.push(pollutant);
+          console.log("Pollutant added to hiddenPollutants:", pollutant);
+        }
+      } else {
+        // 如果勾选框未勾选，则从 hiddenPollutants 中移除该污染物
+        hiddenPollutants = hiddenPollutants.filter(item => item !== pollutant);
+        console.log("Pollutant removed from hiddenPollutants:", pollutant);
+      }
+
+      // 打印更新后的 hiddenPollutants 数组
+      console.log("Updated hiddenPollutants:", hiddenPollutants);
+
+      // 更新图表显示
+      updateChartWindow(parsedData, hiddenPollutants);
+
+      // 更新 localStorage 中的 hiddenPollutants
+      try {
+        console.log("Saving hiddenPollutants to localStorage:", hiddenPollutants);
+        localStorage.setItem('hiddenPollutants', JSON.stringify(hiddenPollutants)); // 保存为字符串
+      } catch (error) {
+        console.error("Error saving hiddenPollutants to localStorage:", error);
+      }
+    });
+  });
+}
+
+
+// 页面加载时，从 localStorage 获取 hiddenPollutants
+window.addEventListener('load', function () {
+  const storedHiddenPollutants = localStorage.getItem('hiddenPollutants');
+  if (storedHiddenPollutants) {
+    hiddenPollutants = JSON.parse(storedHiddenPollutants);
+    console.log("Loaded hiddenPollutants from localStorage:", hiddenPollutants);
+  } else {
+    hiddenPollutants = [];
+  }
+
+  // 确保在加载时正确渲染污染物控制面板
+  if (parsedData) {
+    renderPollutantControl(parsedData.pollutantNames, hiddenPollutants);
+  }
+});
+
+
+
+// 更新图表
+function updateChartWindow(parsedData, hiddenPollutants) {
+    // 平均数据图表配置
+    const chartData_avg = {
+        labels: parsedData.labels,
+        datasets: []
+    };
+    // 最大值数据图表配置
+    const chartData_max = {
+        labels: parsedData.labels,
+        datasets: []
+    };
+    // 最小值数据图表配置
+    const chartData_min = {
+        labels: parsedData.labels,
+        datasets: []
+    };
+
+    Object.keys(parsedData.pollutantsData).forEach(pollutantName => {
+        if (!hiddenPollutants.includes(pollutantName)) {
+            const data = parsedData.pollutantsData[pollutantName];
+            // 处理平均数据图表数据集
+            chartData_avg.datasets.push({
+                label: pollutantName + " - 平均值",
+                data: data.avgValues,
+                borderColor: getRandomColor(),
+                fill: false
+            });
+            // 处理最大值数据图表数据集
+            chartData_max.datasets.push({
+                label: pollutantName + " - 最大值",
+                data: data.maxValues,
+                borderColor: getRandomColor(),
+                fill: false
+            });
+            // 处理最小值数据图表数据集
+            chartData_min.datasets.push({
+                label: pollutantName + " - 最小值",
+                data: data.minValues,
+                borderColor: getRandomColor(),
+                fill: false
+            });
+        }
+    });
+
+    // 更新平均数据图表
+    if (window.pollutantChartInstance_avg) {
+        window.pollutantChartInstance_avg.data = chartData_avg;
+        window.pollutantChartInstance_avg.update();
+    } else {
+        const ctx_avg = document.getElementById('pollutantChart_avg').getContext('2d');
+        window.pollutantChartInstance_avg = new Chart(ctx_avg, {
+            type: 'line',
+            data: chartData_avg,
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        type: 'category',
+                        labels: parsedData.labels
+                    }
+                }
+            }
+        });
+    }
+
+    // 更新最大值数据图表
+    if (window.pollutantChartInstance_max) {
+        window.pollutantChartInstance_max.data = chartData_max;
+        window.pollutantChartInstance_max.update();
+    } else {
+        const ctx_max = document.getElementById('pollutantChart_max').getContext('2d');
+        window.pollutantChartInstance_max = new Chart(ctx_max, {
+            type: 'line',
+            data: chartData_max,
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        type: 'category',
+                        labels: parsedData.labels
+                    }
+                }
+            }
+        });
+    }
+
+    // 更新最小值数据图表
+    if (window.pollutantChartInstance_min) {
+        window.pollutantChartInstance_min.data = chartData_min;
+        window.pollutantChartInstance_min.update();
+    } else {
+        const ctx_min = document.getElementById('pollutantChart_min').getContext('2d');
+        window.pollutantChartInstance_min = new Chart(ctx_min, {
+            type: 'line',
+            data: chartData_min,
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        type: 'category',
+                        labels: parsedData.labels
+                    }
+                }
+            }
+        });
+    }
+}
+
+// 获取随机颜色
+function getRandomColor() {
+  return '#' + Math.floor(Math.random() * 16777215).toString(16);
+}
+
+// 按钮点击事件
+document.getElementById('fetchDataButton').addEventListener('click', fetchDataAndRender);
+
+// 设置定时器每隔 10 秒刷新数据
+setInterval(fetchDataAndRender, 10000);  // 每 10 秒钟刷新一次数据
+
+  </script>
+</body>
+
+</html>
