@@ -52,7 +52,7 @@
   <!-- 数据查询 -->
   <form id="data_MN_form">
     <label for="MN">MN:</label>
-    <input type="number" id="MN" placeholder="输入MN号">
+    <input type="text" id="MN" placeholder="输入MN号" value="Abc">
   </form>
 
   <!-- 数据标识选择 -->
@@ -61,6 +61,7 @@
     <input type="radio" name="CN_Option" id="data_CN_2051" value="2051">2051 分钟数据
     <input type="radio" name="CN_Option" id="data_CN_2061" value="2061">2061 小时数据
     <input type="radio" name="CN_Option" id="data_CN_2031" value="2031">2031 日数据
+    <input type="radio" name="CN_Option" id="data_CN_2011" value="2011">2011 实时数据
   </form>
 
   <button id="fetchDataButton">获取数据</button>
@@ -75,6 +76,7 @@
   <canvas id="pollutantChart_avg" width="800" height="400"></canvas>
   <canvas id="pollutantChart_max" width="800" height="400"></canvas>
   <canvas id="pollutantChart_min" width="800" height="400"></canvas>
+  <canvas id="pollutantChart_rtd" width="800" height="400"></canvas>
   <!-- 数据表 -->
   <h2>原始数据</h2>
   <table id="resultTable">
@@ -160,11 +162,11 @@ function renderTable(results) {
       <td>${item.MN || 'N/A'}</td>
       <td>${item.date || 'N/A'}</td>
       <td>
-        ${Object.keys(item.pollutants).filter(key => key.includes('-Avg') || key.includes('-Max') || key.includes('-Min'))
+        ${Object.keys(item.pollutants).filter(key => key.includes('-Avg') || key.includes('-Max') || key.includes('-Min')|| key.includes('-Rtd'))
           .map(key => {
             const pollutantName = key.split('-')[0];
             const displayName = pollutantsMapping[pollutantName] || pollutantName;
-            return `${displayName}：平均值 ${item.pollutants[`${pollutantName}-Avg`]}，最大值 ${item.pollutants[`${pollutantName}-Max`]}，最小值 ${item.pollutants[`${pollutantName}-Min`]}`;
+            return `${displayName}：平均值 ${item.pollutants[`${pollutantName}-Avg`]}，最大值 ${item.pollutants[`${pollutantName}-Max`]}，最小值 ${item.pollutants[`${pollutantName}-Min`]}，实时数据 ${item.pollutants[`${pollutantName}-Rtd`]}`;
           })
         .join('<br>')}
       </td>
@@ -179,12 +181,12 @@ function parsePollutants(data) {
   const pollutantsData = {};
   const pollutantNames = new Set();
 
-  const pollutantKeys = Object.keys(data[0].pollutants).filter(key => key.includes('-Avg') || key.includes('-Max') || key.includes('-Min'));
+  const pollutantKeys = Object.keys(data[0].pollutants).filter(key => key.includes('-Avg') || key.includes('-Max') || key.includes('-Min')||key.includes('-Rtd') );
   pollutantKeys.forEach(key => {
     const pollutantName = key.split('-')[0];
     const displayName = pollutantsMapping[pollutantName] || pollutantName;
     if (!pollutantsData[displayName]) {
-      pollutantsData[displayName] = { avgValues: [], maxValues: [], minValues: [] };
+      pollutantsData[displayName] = { avgValues: [], maxValues: [], minValues: [],rtdValues: [] };
     }
     pollutantNames.add(displayName);
   });
@@ -200,6 +202,7 @@ function parsePollutants(data) {
       if (key.includes('-Avg')) pollutantsData[displayName].avgValues.push(value);
       if (key.includes('-Max')) pollutantsData[displayName].maxValues.push(value);
       if (key.includes('-Min')) pollutantsData[displayName].minValues.push(value);
+      if (key.includes('-Rtd')) pollutantsData[displayName].rtdValues.push(value);
     });
   });
 
@@ -300,6 +303,11 @@ function updateChartWindow(parsedData, hiddenPollutants) {
         labels: parsedData.labels,
         datasets: []
     };
+     // 实时数据数据图表配置
+     const chartData_rtd = {
+        labels: parsedData.labels,
+        datasets: []
+    };
 
     Object.keys(parsedData.pollutantsData).forEach(pollutantName => {
         if (!hiddenPollutants.includes(pollutantName)) {
@@ -322,6 +330,13 @@ function updateChartWindow(parsedData, hiddenPollutants) {
             chartData_min.datasets.push({
                 label: pollutantName + " - 最小值",
                 data: data.minValues,
+                borderColor: getRandomColor(),
+                fill: false
+            });
+              // 处理实时数据图表数据集
+              chartData_rtd.datasets.push({
+                label: pollutantName + " - 实时数据",
+                data: data.rtdValues,
                 borderColor: getRandomColor(),
                 fill: false
             });
@@ -369,7 +384,26 @@ function updateChartWindow(parsedData, hiddenPollutants) {
             }
         });
     }
-
+ // 更新最大值数据图表
+ if (window.pollutantChartInstance_rtd) {
+        window.pollutantChartInstance_rtd.data = chartData_rtd;
+        window.pollutantChartInstance_rtd.update();
+    } else {
+        const ctx_rtd = document.getElementById('pollutantChart_rtd').getContext('2d');
+        window.pollutantChartInstance_rtd = new Chart(ctx_rtd, {
+            type: 'line',
+            data: chartData_rtd,
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        type: 'category',
+                        labels: parsedData.labels
+                    }
+                }
+            }
+        });
+    }
     // 更新最小值数据图表
     if (window.pollutantChartInstance_min) {
         window.pollutantChartInstance_min.data = chartData_min;

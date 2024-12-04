@@ -183,19 +183,26 @@ app.get('/WEB_js/pollutants_map.js', (req, res) => res.sendFile(path.join(__dirn
     
 
 
-    // 定义路由，用于获取所有历史接收数据的接口
-    app.get('/getHistoryData', (req, res) => {
-        // 查询received_data表中的所有数据的SQL语句
-        const querySql = 'SELECT * FROM received_data';
-        pool.query(querySql, (err, results) => {
-            if (err) {
-                console.log('查询历史数据失败:', err);
-                res.status(500).json({ error: '查询历史数据失败' });
-                return;
-            }
-            res.json({ data: results });
-        });
+
+// 定义路由，用于获取所有历史接收数据的接口
+app.get('/getHistoryData', (req, res) => {
+    // 获取前端传递的页码参数，默认值为1（如果前端没传的话）
+    const page = parseInt(req.query.page) || 1;
+    // 每页显示的数据条数，这里设置为1000条
+    const pageSize = 1000;
+    // 计算偏移量，用于确定从哪条记录开始查询
+    const offset = (page - 1) * pageSize;
+    // 查询received_data表中的数据，按照ID倒叙排序，通过偏移量和每页条数来实现分页查询的SQL语句
+    const querySql = `SELECT * FROM received_data ORDER BY ID DESC LIMIT ${pageSize} OFFSET ${offset}`;
+    pool.query(querySql, (err, results) => {
+        if (err) {
+            console.log('查询历史数据失败:', err);
+            res.status(500).json({ error: '查询历史数据失败' });
+            return;
+        }
+        res.json({ data: results });
     });
+});
 
     // 使用查询特定的数据
    

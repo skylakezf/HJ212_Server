@@ -10,7 +10,8 @@
             width: 100%;
         }
 
-        th, td {
+        th,
+        td {
             border: 1px solid #dddddd;
             text-align: left;
             padding: 8px;
@@ -24,6 +25,11 @@
 
 <body>
     <h1>接收数据历史记录</h1>
+    <div>
+        <button id="prevPage">上一页</button>
+        <span id="currentPage">1</span> / <span id="totalPages">0</span>
+        <button id="nextPage">下一页</button>
+    </div>
     <table id="historyTable">
         <thead>
             <tr>
@@ -31,33 +37,72 @@
                 <th>MN号</th>
                 <th>数据包日期</th>
                 <th>原数据包</th>
-                <th>源IP地址</th>
-                <th>数据包接收日期</th>
+                <th>源IP</th>
+                <th>包接收UTC时间</th>
             </tr>
         </thead>
         <tbody>
         </tbody>
     </table>
     <script>
-        // 使用fetch API向后端接口发送请求获取历史数据
-        fetch('/getHistoryData')
-           .then(response => response.json())
-           .then(data => {
-                const tableBody = document.getElementById('historyTable').getElementsByTagName('tbody')[0];
-                data.data.forEach(item => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${item.id}</td>
-                        <td>${item.MN}</td>
-                        <td>${item.date}</td>
-                        <td>${item.raw_data}</td>
-                        <td>${item.source_ip}</td>
-                        <td>${item.last_update}</td>
-                    `;
-                    tableBody.appendChild(row);
-                });
-            })
-           .catch(error => console.log('获取历史数据出错:', error));
+        let currentPage = 1;
+        const pageSize = 1000;
+        const tableBody = document.getElementById('historyTable').getElementsByTagName('tbody')[0];
+
+        // 函数用于获取指定页码的数据
+        function fetchData(page) {
+            fetch(`/getHistoryData?page=${page}`)
+              .then(response => response.json())
+              .then(data => {
+                    tableBody.innerHTML = ''; // 清空之前的数据
+                    data.data.forEach(item => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${item.id}</td>
+                            <td>${item.MN}</td>
+                            <td>${item.date}</td>
+                            <td>${item.raw_data}</td>
+                            <td>${item.source_ip}</td>
+                            <td>${item.last_update}</td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                })
+              .catch(error => console.log('获取历史数据出错:', error));
+        }
+
+        // 初始化时获取第一页数据
+        fetchData(currentPage);
+
+        // 获取总页数的函数，这里暂时简单模拟为一个固定值，实际中需要根据后端返回的总数据量等信息来准确计算
+        function getTotalPages() {
+            return 10; // 假设总共有10页，实际需和后端配合获取准确值
+        }
+
+        document.getElementById('prevPage').addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                updatePageInfo();
+                fetchData(currentPage);
+            }
+        });
+
+        document.getElementById('nextPage').addEventListener('click', () => {
+            const totalPages = getTotalPages();
+            if (currentPage < totalPages) {
+                currentPage++;
+                updatePageInfo();
+                fetchData(currentPage);
+            }
+        });
+
+        function updatePageInfo() {
+            document.getElementById('currentPage').innerText = currentPage;
+            const totalPages = getTotalPages();
+            document.getElementById('totalPages').innerText = totalPages;
+        }
+
+        updatePageInfo();
     </script>
 </body>
 
