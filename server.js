@@ -39,7 +39,24 @@ function createInitialTables() {
                 reject(err);
                 return;
             }
-
+            // 创建以 MN 为主键的 MM_last_update_data 表
+            const createMM_last_update_dataTable = `
+                CREATE TABLE IF NOT EXISTS MM_last_update_data (
+                    id INT AUTO_INCREMENT PRIMARY KEY,  -- 自增ID
+                    MN VARCHAR(50),                    -- 数据采集仪的唯一标识
+                    date DATETIME,                      -- 数据接收日期（来自DataTime）
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            `;
+            connection.query(createMM_last_update_dataTable, (err) => {
+                connection.release();
+                if (err) {
+                    console.error('创建 createMM_last_update_dataTable 表失败:', err);
+                    reject(err);
+                    return;
+                }
+                console.log('数据库createMM_last_update_dataTable表已存在');
+                resolve();
+            });
             // 创建以 MN 为主键的 received_data 表
             const createReceivedDataTable = `
                 CREATE TABLE IF NOT EXISTS received_data (
@@ -84,7 +101,7 @@ function createInitialTables() {
                     reject(err);
                     return;
                 }
-                console.log('数据库表已存在');
+                console.log('数据库表createReceived2011DataTable已存在');
                 resolve();
             });
             // 创建以 MN 为主键的2051分钟数据 received_data 表
@@ -108,7 +125,7 @@ function createInitialTables() {
                     reject(err);
                     return;
                 }
-                console.log('数据库表已存在');
+                console.log('数据库表createReceived2051DataTable已存在');
                 resolve();
             });
             // 创建以 MN 为主键的2061小时数据 received_data 表
@@ -156,7 +173,7 @@ CREATE TABLE IF NOT EXISTS received_2031_data (
                     reject(err);
                     return;
                 }
-                console.log('数据库表已存在');
+                console.log('数据库表createReceived2031DataTable已存在');
                 resolve();
             });
 
