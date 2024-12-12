@@ -200,6 +200,8 @@ function saveParsedData(parsedData, sourceIp, rawData) {
     const query = `
         INSERT INTO received_data (MN,CN, date, pollutants, source_ip, last_update, raw_data)
         VALUES (?, ? , ?, ?, ?, ?, ?);
+        INSERT INTO received_data (MN,last_update)
+        VALUES (?, ?);
     `;
     const query2011 = `
     INSERT INTO received_2011_data (MN,CN, date, pollutants, source_ip, last_update, raw_data)
@@ -212,6 +214,7 @@ function saveParsedData(parsedData, sourceIp, rawData) {
     const query2051 = `
         INSERT INTO received_2051_data (MN,CN, date, pollutants, source_ip, last_update, raw_data)
         VALUES (?, ? , ?, ?, ?, ?, ?);
+
     `;
     const query2061 = `
     INSERT INTO received_2061_data (MN,CN, date, pollutants, source_ip, last_update, raw_data)
