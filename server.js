@@ -42,9 +42,8 @@ function createInitialTables() {
             // 创建以 MN 为主键的 MM_last_update_data 表
             const createMM_last_update_dataTable = `
                 CREATE TABLE IF NOT EXISTS MM_last_update_data (
-                    id INT AUTO_INCREMENT PRIMARY KEY,  -- 自增ID
-                    MN VARCHAR(50),                    -- 数据采集仪的唯一标识
-                    date DATETIME,                      -- 数据接收日期（来自DataTime）
+                    MN VARCHAR(50)  PRIMARY KEY,                    -- 数据采集仪的唯一标识
+                    last_Update_date DATETIME          -- 数据接收日期（来自DataTime）
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             `;
             connection.query(createMM_last_update_dataTable, (err) => {
@@ -77,7 +76,7 @@ function createInitialTables() {
                     reject(err);
                     return;
                 }
-                console.log('数据库表已存在');
+                console.log('数据库表received_data已存在');
                 resolve();
             });
             // 创建以 MN 为主键的2011实时数据 received_data 表
@@ -97,11 +96,11 @@ function createInitialTables() {
             connection.query(createReceived2011DataTable, (err) => {
                 connection.release();
                 if (err) {
-                    console.error('创建 2011received_data 表失败:', err);
+                    console.error('创建2011received表失败:', err);
                     reject(err);
                     return;
                 }
-                console.log('数据库表createReceived2011DataTable已存在');
+                console.log('数据库表2011DataTable已存在');
                 resolve();
             });
             // 创建以 MN 为主键的2051分钟数据 received_data 表
@@ -121,11 +120,11 @@ function createInitialTables() {
             connection.query(createReceived2051DataTable, (err) => {
                 connection.release();
                 if (err) {
-                    console.error('创建 2051received_data 表失败:', err);
+                    console.error('创建2051received表失败:', err);
                     reject(err);
                     return;
                 }
-                console.log('数据库表createReceived2051DataTable已存在');
+                console.log('数据库表2051DataTable已存在');
                 resolve();
             });
             // 创建以 MN 为主键的2061小时数据 received_data 表
@@ -145,11 +144,11 @@ function createInitialTables() {
             connection.query(createReceived2061DataTable, (err) => {
                 connection.release();
                 if (err) {
-                    console.error('创建 2061received_data 表失败:', err);
+                    console.error('创建2061received表失败:', err);
                     reject(err);
                     return;
                 }
-                console.log('数据库表已存在');
+                console.log('数据库表2061received已存在');
                 resolve();
             });
             // 创建以 MN 为主键的2031日数据 received_data 表
@@ -200,8 +199,6 @@ function saveParsedData(parsedData, sourceIp, rawData) {
     const query = `
         INSERT INTO received_data (MN,CN, date, pollutants, source_ip, last_update, raw_data)
         VALUES (?, ? , ?, ?, ?, ?, ?);
-        INSERT INTO received_data (MN,last_update)
-        VALUES (?, ?);
     `;
     const query2011 = `
     INSERT INTO received_2011_data (MN,CN, date, pollutants, source_ip, last_update, raw_data)
@@ -220,6 +217,35 @@ function saveParsedData(parsedData, sourceIp, rawData) {
     INSERT INTO received_2061_data (MN,CN, date, pollutants, source_ip, last_update, raw_data)
     VALUES (?, ? , ?, ?, ?, ?, ?);
 `;
+const create_MM_data = `
+
+
+    INSERT INTO MM_last_update_data (MN,last_Update_date)
+        VALUES (?, ?);
+`;
+const Update_MM_data = `
+   UPDATE MM_last_update_data
+    SET last_Update_date = ?
+    WHERE MN = ?;
+`;
+    pool.query(create_MM_data,[MN,lastUpdate],(err=>{
+if (err) {
+            pool.query(Update_MM_data,[lastUpdate,MN],err=>{
+                if (err) {
+                    console.log(err)
+                    console.error('更新MN最后上传数据信息失败')
+                }else{
+                    console.log(` `);
+                    console.info(`成功插更新MN信息: MN=${MN},最后更新时间=${lastUpdate}`);
+                }
+
+            })
+        } else {
+            console.log(` `);
+            console.info(`成功插入MN信息: MN=${MN},最后更新时间=${lastUpdate}`);
+        }
+
+    }))
     pool.query(query, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
         if (err) {
             console.error('数据库插入失败:', err.message);
@@ -231,51 +257,51 @@ function saveParsedData(parsedData, sourceIp, rawData) {
         }
     });
 
-if (CN=='2011') {
-    pool.query(query2011, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
-        if (err) {
-            console.error('数据库2011实时插入失败:', err.message);
-        } else {
-            console.info(`成功存储解析后的数据到2011实时数据库: MN=${MN},CN=${CN} , Raw Data=${rawData}`);
-            
+    if (CN == '2011') {
+        pool.query(query2011, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
+            if (err) {
+                console.error('数据库2011实时插入失败:', err.message);
+            } else {
+                console.info(`成功存储解析后的数据到2011实时数据库: MN=${MN},CN=${CN} , Raw Data=${rawData}`);
 
-        }
-    });
-}
 
-if (CN=='2031') {
-    pool.query(query2031, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
-        if (err) {
-            console.error('数据库2031实时插入失败:', err.message);
-        } else {
-            console.info(`成功存储解析后的数据到2031日数据库: MN=${MN},CN=${CN} , Raw Data=${rawData}`);
-            
+            }
+        });
+    }
 
-        }
-    });
-}
-if (CN=='2051') {
-    pool.query(query2051, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
-        if (err) {
-            console.error('数据库2051实时插入失败:', err.message);
-        } else {
-            console.info(`成功存储解析后的数据到2051分钟数据库: MN=${MN},CN=${CN} , Raw Data=${rawData}`);
-            
+    if (CN == '2031') {
+        pool.query(query2031, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
+            if (err) {
+                console.error('数据库2031实时插入失败:', err.message);
+            } else {
+                console.info(`成功存储解析后的数据到2031日数据库: MN=${MN},CN=${CN} , Raw Data=${rawData}`);
 
-        }
-    });
-}
-if (CN=='2061') {
-    pool.query(query2061, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
-        if (err) {
-            console.error('数据库2061实时插入失败:', err.message);
-        } else {
-            console.info(`成功存储解析后的数据到2061小时数据库: MN=${MN},CN=${CN} , Raw Data=${rawData}`);
-            
 
-        }
-    });
-}
+            }
+        });
+    }
+    if (CN == '2051') {
+        pool.query(query2051, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
+            if (err) {
+                console.error('数据库2051实时插入失败:', err.message);
+            } else {
+                console.info(`成功存储解析后的数据到2051分钟数据库: MN=${MN},CN=${CN} , Raw Data=${rawData}`);
+
+
+            }
+        });
+    }
+    if (CN == '2061') {
+        pool.query(query2061, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
+            if (err) {
+                console.error('数据库2061实时插入失败:', err.message);
+            } else {
+                console.info(`成功存储解析后的数据到2061小时数据库: MN=${MN},CN=${CN} , Raw Data=${rawData}`);
+
+
+            }
+        });
+    }
 
 }
 
@@ -338,6 +364,7 @@ createInitialTables().then(() => {
     app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
     app.get('/history', (req, res) => res.sendFile(path.join(__dirname, 'public', 'history.html')));
     app.get('/select', (req, res) => res.sendFile(path.join(__dirname, 'public', 'HistorySelect.html')));
+    app.get('/MNStatus', (req, res) => res.sendFile(path.join(__dirname, 'public', 'MNStatus.html')));
     app.get('/log', (req, res) => res.sendFile(path.join(__dirname, 'server.log')));
     app.get('/img', (req, res) => res.sendFile(path.join(__dirname, 'public', 'pollutants.html')));
     app.get('/WEB_js/chart.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'chart.js')));
@@ -398,7 +425,7 @@ createInitialTables().then(() => {
         const queryParams = [];
 
         // 动态添加查询条件
-        if (CN=="2011") {
+        if (CN == "2011") {
             if (MN) {
                 query2011 += ' AND MN = ?';
                 queryParams.push(MN);
@@ -410,7 +437,7 @@ createInitialTables().then(() => {
             if (CN) {
                 query2011 += ' AND CN = ?';
                 queryParams.push(CN);
-    
+
             }
             if (Time) {
                 query2011 += ' AND date = ?';
@@ -424,7 +451,7 @@ createInitialTables().then(() => {
         }
 
 
-        if (CN=="2051") {
+        if (CN == "2051") {
             if (MN) {
                 query2051 += ' AND MN = ?';
                 queryParams.push(MN);
@@ -436,7 +463,7 @@ createInitialTables().then(() => {
             if (CN) {
                 query2051 += ' AND CN = ?';
                 queryParams.push(CN);
-    
+
             }
             if (Time) {
                 query2051 += ' AND date = ?';
@@ -450,7 +477,7 @@ createInitialTables().then(() => {
         }
 
 
-        if (CN=="2061") {
+        if (CN == "2061") {
             if (MN) {
                 query2061 += ' AND MN = ?';
                 queryParams.push(MN);
@@ -462,7 +489,7 @@ createInitialTables().then(() => {
             if (CN) {
                 query2061 += ' AND CN = ?';
                 queryParams.push(CN);
-    
+
             }
             if (Time) {
                 query2061 += ' AND date = ?';
@@ -475,7 +502,7 @@ createInitialTables().then(() => {
             }
         }
 
-        if (CN=="2031") {
+        if (CN == "2031") {
             if (MN) {
                 query2031 += ' AND MN = ?';
                 queryParams.push(MN);
@@ -487,7 +514,7 @@ createInitialTables().then(() => {
             if (CN) {
                 query2031 += ' AND CN = ?';
                 queryParams.push(CN);
-    
+
             }
             if (Time) {
                 query2031 += ' AND date = ?';
@@ -523,9 +550,23 @@ createInitialTables().then(() => {
         });
     });
 
+      // 获取连接过平台的服务器最后上传时间
+      app.get('/getMN_lastUpdate_Data', (req, res) => {
+      
+        const querySql = `SELECT * FROM MM_last_update_data`;
+        pool.query(querySql, (err, results) => {
+            if (err) {
+                console.log('查询MN最后更新时间数据失败:', err);
+                res.status(500).json({ error: '查询历史数据失败' });
+                return;
+            }
+            res.json({ Last_MN_TIME: results });
+        });
+    });
+
     app.post('/LookupData_10', express.json(), (req, res) => {
         const { MN, Time, Flag, IP, CN } = req.body;
-    
+
         // 定义表和最大 ID 查询的映射
         const tableMap = {
             "2011": "received_2011_data",
@@ -533,17 +574,17 @@ createInitialTables().then(() => {
             "2061": "received_2061_data",
             "2031": "received_2031_data",
         };
-    
+
         // 确保 CN 在映射中有效
         if (!tableMap[CN]) {
             return res.status(400).json({ error: '无效的 CN 参数' });
         }
-    
+
         const tableName = tableMap[CN];
         const maxIdQuery = `SELECT MAX(ID) AS maxId FROM ${tableName}`;
         let query = `SELECT * FROM ${tableName} WHERE 1=1`;
         const queryParams = [];
-    
+
         // 动态添加查询条件
         if (MN) {
             query += ' AND MN = ?';
@@ -561,42 +602,42 @@ createInitialTables().then(() => {
             query += ' AND JSON_EXTRACT(pollutants, ?) = ?';
             queryParams.push(`$.${Flag}`, Flag);
         }
-    
+
         // 查询最大 ID
         pool.query(maxIdQuery, (err, maxIdResult) => {
             if (err) {
                 console.error('查询最大 ID 失败:', err);
                 return res.status(500).json({ error: '查询最大 ID 失败，请稍后再试' });
             }
-    
+
             const maxId = maxIdResult[0]?.maxId;
-    
+
             if (!maxId) {
                 console.error('未找到最大 ID');
                 return res.status(400).json({ error: '没有查询到有效的最大 ID' });
             }
-    
+
             // 根据最大 ID 查询前 10 条记录
             query += ' AND ID <= ? ORDER BY ID DESC LIMIT 10';
             queryParams.push(maxId);
-    
+
             pool.query(query, queryParams, (err, results) => {
                 if (err) {
                     console.error('查询失败:', err);
                     return res.status(500).json({ error: '查询失败，请稍后再试' });
                 }
-    
+
                 if (results.length === 0) {
                     console.error('查询为空');
                     return res.status(400).json({ error: '没有查询到数据' });
                 }
-    
+
                 // 返回查询结果
                 res.json({ data: results });
             });
         });
     });
-    
+
 
 
 
