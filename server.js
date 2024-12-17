@@ -276,6 +276,7 @@ function parseDataParamsFlag(dataParamsFlag) {
 
 
 const filePath = path.join(__dirname, 'Key.txt');
+const PushdeerfilePath = path.join(__dirname, 'pushkey.txt');
 // 中间件：解析 JSON 请求
 app.use(express.json());
 // 读取 Key.txt 文件
@@ -308,6 +309,42 @@ app.post('/Key.txt', (req, res) => {
     });
 });
 
+
+
+
+app.get('/PushKey.txt', (req, res) => {
+    fs.readFile(PushdeerfilePath, 'utf8', (err, data) => {
+        if (err) {
+            res.status(500).send('无法读取 Key.txt');
+            console.error(err);
+        } else {
+            res.send(data);
+        }
+    });
+});
+
+// 修改 Key.txt 文件
+app.post('/PushKey.txt', (req, res) => {
+    const { content } = req.body;
+    if (typeof content !== 'string') {
+        res.status(400).send('内容必须是字符串');
+        return;
+    }
+
+    fs.writeFile(PushdeerfilePath, content, 'utf8', (err) => {
+        if (err) {
+            res.status(500).send('无法写入 Key');
+            console.error(err);
+        } else {
+            res.send('Key已更新');
+        }
+    });
+});
+
+
+
+
+
 let lastSentMessage = ""; // 保存上次发送的消息
 
 function getServerChanKey(callback) {
@@ -320,6 +357,17 @@ function getServerChanKey(callback) {
         }
     });
 }
+function getPushDeernKey(callback) {
+    fs.readFile('pushkey.txt', 'utf8', (err, data) => {
+        if (err) {
+            console.error('pushdeerKEY密钥文件读取失败:', err.message);
+            callback(err, null); // 出错时执行回调并传递错误
+        } else {
+            callback(null, data.trim()); // 成功时执行回调并传递密钥
+        }
+    });
+}
+
 
 
 function sendToServerChan(message) {
@@ -352,6 +400,38 @@ function sendToServerChan(message) {
             .catch((err) => {
                 console.error('设备警告请求出错:', err.message);
             });
+    });
+}
+function sendToPushDeer(message) {
+    if (message === lastSentMessage) {
+        console.log('消息未变化');
+        return; // Skip if the message hasn't changed
+    }
+
+    // Get PushDeer key through the getPushDeernKey function
+    getPushDeernKey((err, pushDeerKey) => {
+        if (err) {
+            console.error('无法获取 PushDeer 密钥，跳过消息发送');
+            return;
+        }
+
+        const url = `https://api2.pushdeer.com/message/push?pushkey=${pushDeerKey}`;
+
+        axios.post(url, {
+            text: '设备信息警告',  // Title of the push message
+            desp: message,         // The message content
+        })
+        .then((response) => {
+            if (response.data.code === 200) {
+                console.log('设备警告消息发送成功');
+                lastSentMessage = message; // Update the last sent message
+            } else {
+                console.error('设备警告消息发送失败:', response.data);
+            }
+        })
+        .catch((err) => {
+            console.error('设备警告请求出错:', err.message);
+        });
     });
 }
 
@@ -413,7 +493,7 @@ function parseHJ212(data) {
 
         // 通过 Server 酱发送消息
         sendToServerChan(flagMessage);
-
+        sendToPushDeer(flagMessage);
         return { baseParams, dataParams, dataParamsFlag };
     } catch (err) {
         console.error('HJ212 解析失败:', err.message);
