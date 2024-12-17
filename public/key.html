@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>微信推送管理</title>
+    
+</head>
+<body>
+    <h1>微信推送管理</h1>
+    <div>
+        <button id="load">加载</button>
+        <button id="save">保存</button>
+        <button id="clouse">关闭微信推送</button>
+        <textarea id="content" placeholder="在此填入微信推送Key"></textarea>
+        <a href="https://sct.ftqq.com/sendkey">点击链接绑定微信并获取KEY</a>
+    </div>
+    <script>
+        const loadButton = document.getElementById('load');
+        const saveButton = document.getElementById('save');
+        const contentArea = document.getElementById('content');
+        const clouseButton = document.getElementById('clouse');
+
+        // 加载 Key.txt 内容
+        loadButton.addEventListener('click', () => {
+            fetch('/Key.txt')
+                .then(response => response.text())
+                .then(data => {
+                    contentArea.value = data;
+                })
+                .catch(error => {
+                    alert('加载失败：' + error);
+                });
+        });
+
+        // 保存修改后的内容
+        saveButton.addEventListener('click', () => {
+            const content = contentArea.value;
+            fetch('/Key.txt', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ content }),
+            })
+                .then(response => response.text())
+                .then(message => {
+                    alert(message);
+                })
+                .catch(error => {
+                    alert('保存失败：' + error);
+                });
+        });
+
+        clouseButton.addEventListener('click', () => {
+            const content = ' ';
+            fetch('/Key.txt', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ content }),
+            })
+                .then(response => response.text())
+                .then(message => {
+                    alert(message);
+                })
+                .catch(error => {
+                    alert('保存失败：' + error);
+                });
+        });
+    </script>
+</body>
+</html>

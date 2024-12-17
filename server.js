@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS received_2031_data (
 writeLog('服务器启动日期为' + new Date());
 async function saveParsedData(parsedData, sourceIp, rawData) {
     const { baseParams, dataParams, dataParamsFlag = {} } = parsedData;
-
+    console.log(parsedData)
     const MN = baseParams['MN'];
     const CN = baseParams['CN'];
     const dataTimeStr = dataParams['DataTime'];
@@ -272,33 +272,87 @@ function parseDataParamsFlag(dataParamsFlag) {
     return result.join('; ');
 }
 
+//微信推送
 
+
+const filePath = path.join(__dirname, 'Key.txt');
+// 中间件：解析 JSON 请求
+app.use(express.json());
+// 读取 Key.txt 文件
+app.get('/Key.txt', (req, res) => {
+    fs.readFile(filePath, 'utf8', (err, data) => {
+        if (err) {
+            res.status(500).send('无法读取 Key.txt');
+            console.error(err);
+        } else {
+            res.send(data);
+        }
+    });
+});
+
+// 修改 Key.txt 文件
+app.post('/Key.txt', (req, res) => {
+    const { content } = req.body;
+    if (typeof content !== 'string') {
+        res.status(400).send('内容必须是字符串');
+        return;
+    }
+
+    fs.writeFile(filePath, content, 'utf8', (err) => {
+        if (err) {
+            res.status(500).send('无法写入 Key');
+            console.error(err);
+        } else {
+            res.send('Key已更新');
+        }
+    });
+});
 
 let lastSentMessage = ""; // 保存上次发送的消息
 
-async function sendToServerChan(message) {
+function getServerChanKey(callback) {
+    fs.readFile('Key.txt', 'utf8', (err, data) => {
+        if (err) {
+            console.error('KEY密钥文件读取失败:', err.message);
+            callback(err, null); // 出错时执行回调并传递错误
+        } else {
+            callback(null, data.trim()); // 成功时执行回调并传递密钥
+        }
+    });
+}
+
+
+function sendToServerChan(message) {
     if (message === lastSentMessage) {
-        console.log('消息未变化，跳过发送');
+        console.log('消息未变化');
         return; // 跳过发送
     }
-    
-    const serverChanKey = 'SCT248843TIjutxRsGyzSEh4zB2NVTIv5W'; // 替换为你的 Server 酱密钥
-    const url = `https://sctapi.ftqq.com/${serverChanKey}.send`;
-    
-    try {
-        const response = await axios.post(url, {
+
+    // 调用 getServerChanKey 时必须提供回调函数
+    getServerChanKey((err, serverChanKey) => {
+        if (err) {
+            console.error('无法获取 Server 酱密钥，跳过消息发送');
+            return;
+        }
+
+        const url = `https://sctapi.ftqq.com/${serverChanKey}.send`;
+
+        axios.post(url, {
             title: '设备信息警告',
             desp: message,
-        });
-        if (response.data.code === 0) {
-            console.log('设备警告消息发送成功');
-            lastSentMessage = message; // 更新上次发送的消息
-        } else {
-            console.error('设备警告消息发送失败:', response.data);
-        }
-    } catch (err) {
-        console.error('设备警告请求出错:', err.message);
-    }
+        })
+            .then((response) => {
+                if (response.data.code === 0) {
+                    console.log('设备警告消息发送成功');
+                    lastSentMessage = message; // 更新上次发送的消息
+                } else {
+                    console.error('设备警告消息发送失败:', response.data);
+                }
+            })
+            .catch((err) => {
+                console.error('设备警告请求出错:', err.message);
+            });
+    });
 }
 
 
@@ -380,9 +434,11 @@ createInitialTables().then(() => {
     app.get('/MNStatus', (req, res) => res.sendFile(path.join(__dirname, 'public', 'MNStatus.html')));
     app.get('/log', (req, res) => res.sendFile(path.join(__dirname, 'server.log')));
     app.get('/img', (req, res) => res.sendFile(path.join(__dirname, 'public', 'pollutants.html')));
+    app.get('/key', (req, res) => res.sendFile(path.join(__dirname, 'public', 'key.html')));
     app.get('/WEB_js/chart.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'chart.js')));
     app.get('/WEB_js/pollutants_map.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'pollutants_map.js')));
-
+    
+    
     app.get('/getIP', (req, res) => {
         const os = require('os');
         const interfaces = os.networkInterfaces();
@@ -732,6 +788,7 @@ function writeLog(message) {
     fs.appendFileSync(logFilePath, message + '\n');
 
 }
+
 
 
 
