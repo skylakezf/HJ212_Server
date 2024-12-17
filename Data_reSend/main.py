@@ -28,7 +28,7 @@ def send_tcp_data(host, port, data):
 def main():
     # 配置
     excel_file = "data.xlsx"  # Excel 文件路径
-    server_host = "113.45.10.40"  # 目标服务器地址
+    server_host = "127.0.0.1"  # 目标服务器地址
     server_port = 3000         # 目标服务器端口
     interval = 0.01            # 发送间隔（秒）
     # 此间隔可为空但为了防止由于网络阻塞建议此间隔填写为0.01

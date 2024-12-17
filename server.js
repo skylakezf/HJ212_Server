@@ -4,6 +4,7 @@ const express = require('express');
 const mysql = require('mysql2');
 const fs = require('fs');
 const path = require('path');
+const scSend = require('serverchan-sdk');
 
 
 const port = 8080;
@@ -66,7 +67,8 @@ function createInitialTables() {
                     pollutants JSON,                    -- 污染物数据 (JSON 格式)
                     source_ip VARCHAR(45),              -- 来源 IP 地址
                     last_update DATETIME,               -- 数据最后更新时间（接收到数据包的时间）
-                    raw_data TEXT                       -- 用于存储原始接收的数据
+                      raw_data TEXT,                      -- 用于存储原始接收的数据
+                dataParamsFlag JSON                 -- 用于存储接收到的Flag
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             `;
             connection.query(createReceivedDataTable, (err) => {
@@ -85,12 +87,12 @@ function createInitialTables() {
                 id INT AUTO_INCREMENT PRIMARY KEY,  -- 自增ID
                 MN VARCHAR(50),                    -- 数据采集仪的唯一标识
                 CN VARCHAR(6),                    -- 数据状态
-                Flag VARCHAR(6),                    -- 数据状态
                 date DATETIME,                      -- 数据接收日期（来自DataTime）
                 pollutants JSON,                    -- 污染物数据 (JSON 格式)
                 source_ip VARCHAR(45),              -- 来源 IP 地址
                 last_update DATETIME,               -- 数据最后更新时间（接收到数据包的时间）
-                raw_data TEXT                       -- 用于存储原始接收的数据
+                raw_data TEXT,                      -- 用于存储原始接收的数据
+                dataParamsFlag JSON                 -- 用于存储接收到的Flag
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         `;
             connection.query(createReceived2011DataTable, (err) => {
@@ -107,14 +109,14 @@ function createInitialTables() {
             const createReceived2051DataTable = `
         CREATE TABLE IF NOT EXISTS received_2051_data (
             id INT AUTO_INCREMENT PRIMARY KEY,  -- 自增ID
-            MN VARCHAR(50),                    -- 数据采集仪的唯一标识
-            CN VARCHAR(6),                    -- 数据状态
-            Flag VARCHAR(6),                    -- 数据状态
-            date DATETIME,                      -- 数据接收日期（来自DataTime）
-            pollutants JSON,                    -- 污染物数据 (JSON 格式)
-            source_ip VARCHAR(45),              -- 来源 IP 地址
-            last_update DATETIME,               -- 数据最后更新时间（接收到数据包的时间）
-            raw_data TEXT                       -- 用于存储原始接收的数据
+                MN VARCHAR(50),                    -- 数据采集仪的唯一标识
+                CN VARCHAR(6),                    -- 数据状态
+                date DATETIME,                      -- 数据接收日期（来自DataTime）
+                pollutants JSON,                    -- 污染物数据 (JSON 格式)
+                source_ip VARCHAR(45),              -- 来源 IP 地址
+                last_update DATETIME,               -- 数据最后更新时间（接收到数据包的时间）
+                raw_data TEXT,                      -- 用于存储原始接收的数据
+                dataParamsFlag JSON                 -- 用于存储接收到的Flag
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `;
             connection.query(createReceived2051DataTable, (err) => {
@@ -131,14 +133,14 @@ function createInitialTables() {
             const createReceived2061DataTable = `
     CREATE TABLE IF NOT EXISTS received_2061_data (
         id INT AUTO_INCREMENT PRIMARY KEY,  -- 自增ID
-        MN VARCHAR(50),                    -- 数据采集仪的唯一标识
-        CN VARCHAR(6),                    -- 数据状态
-        Flag VARCHAR(6),                    -- 数据状态
-        date DATETIME,                      -- 数据接收日期（来自DataTime）
-        pollutants JSON,                    -- 污染物数据 (JSON 格式)
-        source_ip VARCHAR(45),              -- 来源 IP 地址
-        last_update DATETIME,               -- 数据最后更新时间（接收到数据包的时间）
-        raw_data TEXT                       -- 用于存储原始接收的数据
+                MN VARCHAR(50),                    -- 数据采集仪的唯一标识
+                CN VARCHAR(6),                    -- 数据状态
+                date DATETIME,                      -- 数据接收日期（来自DataTime）
+                pollutants JSON,                    -- 污染物数据 (JSON 格式)
+                source_ip VARCHAR(45),              -- 来源 IP 地址
+                last_update DATETIME,               -- 数据最后更新时间（接收到数据包的时间）
+                raw_data TEXT,                      -- 用于存储原始接收的数据
+                dataParamsFlag JSON                 -- 用于存储接收到的Flag
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `;
             connection.query(createReceived2061DataTable, (err) => {
@@ -157,12 +159,12 @@ CREATE TABLE IF NOT EXISTS received_2031_data (
     id INT AUTO_INCREMENT PRIMARY KEY,  -- 自增ID
     MN VARCHAR(50),                    -- 数据采集仪的唯一标识
     CN VARCHAR(6),                    -- 数据状态
-    Flag VARCHAR(6),                    -- 数据状态
     date DATETIME,                      -- 数据接收日期（来自DataTime）
     pollutants JSON,                    -- 污染物数据 (JSON 格式)
     source_ip VARCHAR(45),              -- 来源 IP 地址
     last_update DATETIME,               -- 数据最后更新时间（接收到数据包的时间）
-    raw_data TEXT                       -- 用于存储原始接收的数据
+    raw_data TEXT,                       -- 用于存储原始接收的数据
+     dataParamsFlag JSON                 -- 用于存储接收到的Flag
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `;
             connection.query(createReceived2031DataTable, (err) => {
@@ -182,128 +184,124 @@ CREATE TABLE IF NOT EXISTS received_2031_data (
     });
 }
 writeLog('服务器启动日期为' + new Date());
-function saveParsedData(parsedData, sourceIp, rawData) {
-    const { baseParams, dataParams } = parsedData;
-    const MN = baseParams['MN']; // 数据采集仪唯一标识
-    const CN = baseParams['CN'];//数据类型
-    // Extract DataTime from pollutants and convert it
-    const dataTimeStr = dataParams['DataTime']; // DataTime should be in the format YYYYMMDDHHMMSS
-    const date = formatDataTime(dataTimeStr); // Convert to DATETIME format
+async function saveParsedData(parsedData, sourceIp, rawData) {
+    const { baseParams, dataParams, dataParamsFlag = {} } = parsedData;
 
-    const lastUpdate = new Date(); // 使用当前时间作为 last_update
+    const MN = baseParams['MN'];
+    const CN = baseParams['CN'];
+    const dataTimeStr = dataParams['DataTime'];
+    const date = formatDataTime(dataTimeStr);
+    const lastUpdate = new Date();
+
     console.info('当前时间', lastUpdate);
     writeLog('当前时间' + lastUpdate);
-    const pollutants = JSON.stringify(dataParams); // 转换为 JSON 格式
 
-    // 插入新的记录，不更新原记录
-    const query = `
-        INSERT INTO received_data (MN,CN, date, pollutants, source_ip, last_update, raw_data)
-        VALUES (?, ? , ?, ?, ?, ?, ?);
-    `;
-    const query2011 = `
-    INSERT INTO received_2011_data (MN,CN, date, pollutants, source_ip, last_update, raw_data)
-    VALUES (?, ? , ?, ?, ?, ?, ?);
-`;
-    const query2031 = `
-        INSERT INTO received_2031_data (MN,CN, date, pollutants, source_ip, last_update, raw_data)
-        VALUES (?, ? , ?, ?, ?, ?, ?);
-    `;
-    const query2051 = `
-        INSERT INTO received_2051_data (MN,CN, date, pollutants, source_ip, last_update, raw_data)
-        VALUES (?, ? , ?, ?, ?, ?, ?);
+    const pollutants = JSON.stringify(dataParams);
+    const dataParamsFlagStr = JSON.stringify(dataParamsFlag);
 
-    `;
-    const query2061 = `
-    INSERT INTO received_2061_data (MN,CN, date, pollutants, source_ip, last_update, raw_data)
-    VALUES (?, ? , ?, ?, ?, ?, ?);
-`;
-const create_MM_data = `
+    
+    const insertData = (tableName) => {
+        const query = `
+            INSERT INTO ${tableName} (MN, CN, date, pollutants, source_ip, last_update, raw_data, dataParamsFlag)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        `;
+        pool.query(query, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData, dataParamsFlagStr], (err) => {
+            if (err) {
+                console.error(`数据库${CN}实时插入失败:`, err.message);
+            } else {
+                console.info(`成功存储解析后的数据到${tableName}: MN=${MN}, CN=${CN}, Raw Data=${rawData}`);
+            }
+        });
+    };
+
+    const createOrUpdateMMData = () => {
+        const createQuery = `
+            INSERT INTO MM_last_update_data (MN, last_Update_date)
+            VALUES (?, ?);
+        `;
+        const updateQuery = `
+            UPDATE MM_last_update_data
+            SET last_Update_date = ?
+            WHERE MN = ?;
+        `;
+
+        pool.query(createQuery, [MN, lastUpdate], (err) => {
+            if (err) {
+                pool.query(updateQuery, [lastUpdate, MN], (err) => {
+                    if (err) {
+                        console.error('更新MN最后上传数据信息失败:', err);
+                    } else {
+                        console.info(`成功更新MN信息: MN=${MN}, 最后更新时间=${lastUpdate}`);
+                    }
+                });
+            } else {
+                console.info(`成功插入MN信息: MN=${MN}, 最后更新时间=${lastUpdate}`);
+            }
+        });
+    };
+
+    createOrUpdateMMData();
+    insertData('received_data');
+
+    // Insert data based on CN value
+    const cnMap = {
+        '2011': 'received_2011_data',
+        '2031': 'received_2031_data',
+        '2051': 'received_2051_data',
+        '2061': 'received_2061_data',
+    };
+
+    const tableName = cnMap[CN];
+    if (tableName) {
+        insertData(tableName);
+    }
+}
 
 
-    INSERT INTO MM_last_update_data (MN,last_Update_date)
-        VALUES (?, ?);
-`;
-const Update_MM_data = `
-   UPDATE MM_last_update_data
-    SET last_Update_date = ?
-    WHERE MN = ?;
-`;
-    pool.query(create_MM_data,[MN,lastUpdate],(err=>{
-if (err) {
-            pool.query(Update_MM_data,[lastUpdate,MN],err=>{
-                if (err) {
-                    console.log(err)
-                    console.error('更新MN最后上传数据信息失败')
-                }else{
-                    console.log(` `);
-                    console.info(`成功插更新MN信息: MN=${MN},最后更新时间=${lastUpdate}`);
-                }
-
-            })
-        } else {
-            console.log(` `);
-            console.info(`成功插入MN信息: MN=${MN},最后更新时间=${lastUpdate}`);
-        }
-
-    }))
-    pool.query(query, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
-        if (err) {
-            console.error('数据库插入失败:', err.message);
-        } else {
-            console.log(` `);
-            console.info(`成功存储解析后的数据到总数据库: MN=${MN},CN=${CN} , Raw Data=${rawData}`);
-            writeLog(`存储解析后的数据到总数据库: MN=${MN}, CN=${CN} ,Raw Data=${rawData}`);
-            console.log(CN);
-        }
+function parseDataParamsFlag(dataParamsFlag) {
+    const result = [];
+    
+    Object.entries(dataParamsFlag).forEach(([key, value]) => {
+        const pollutantCode = key.split('-')[0]; // 提取污染物编码
+        const pollutant = pollutantsMapping[pollutantCode] || `未知污染物(${pollutantCode})`;
+        const flag = flagMapping[value] || `未知状态(${value})`;
+        
+        result.push(`${pollutant}_状态_${flag}`);
     });
 
-    if (CN == '2011') {
-        pool.query(query2011, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
-            if (err) {
-                console.error('数据库2011实时插入失败:', err.message);
-            } else {
-                console.info(`成功存储解析后的数据到2011实时数据库: MN=${MN},CN=${CN} , Raw Data=${rawData}`);
-
-
-            }
-        });
-    }
-
-    if (CN == '2031') {
-        pool.query(query2031, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
-            if (err) {
-                console.error('数据库2031实时插入失败:', err.message);
-            } else {
-                console.info(`成功存储解析后的数据到2031日数据库: MN=${MN},CN=${CN} , Raw Data=${rawData}`);
-
-
-            }
-        });
-    }
-    if (CN == '2051') {
-        pool.query(query2051, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
-            if (err) {
-                console.error('数据库2051实时插入失败:', err.message);
-            } else {
-                console.info(`成功存储解析后的数据到2051分钟数据库: MN=${MN},CN=${CN} , Raw Data=${rawData}`);
-
-
-            }
-        });
-    }
-    if (CN == '2061') {
-        pool.query(query2061, [MN, CN, date, pollutants, sourceIp, lastUpdate, rawData], (err) => {
-            if (err) {
-                console.error('数据库2061实时插入失败:', err.message);
-            } else {
-                console.info(`成功存储解析后的数据到2061小时数据库: MN=${MN},CN=${CN} , Raw Data=${rawData}`);
-
-
-            }
-        });
-    }
-
+    return result.join('; ');
 }
+
+
+
+let lastSentMessage = ""; // 保存上次发送的消息
+
+async function sendToServerChan(message) {
+    if (message === lastSentMessage) {
+        console.log('消息未变化，跳过发送');
+        return; // 跳过发送
+    }
+    
+    const serverChanKey = 'SCT248843TIjutxRsGyzSEh4zB2NVTIv5W'; // 替换为你的 Server 酱密钥
+    const url = `https://sctapi.ftqq.com/${serverChanKey}.send`;
+    
+    try {
+        const response = await axios.post(url, {
+            title: '设备信息警告',
+            desp: message,
+        });
+        if (response.data.code === 0) {
+            console.log('设备警告消息发送成功');
+            lastSentMessage = message; // 更新上次发送的消息
+        } else {
+            console.error('设备警告消息发送失败:', response.data);
+        }
+    } catch (err) {
+        console.error('设备警告请求出错:', err.message);
+    }
+}
+
+
 
 // Helper function to convert DataTime string (YYYYMMDDHHMMSS) to DATETIME format
 function formatDataTime(dataTimeStr) {
@@ -326,34 +324,49 @@ function formatDataTime(dataTimeStr) {
     return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
 }
 
-// 更新 HJ212 数据解析和存储逻辑
+//  HJ212 数据解析和存储逻辑
 function parseHJ212(data) {
     try {
         const message = data.toString('utf8');
         const subStr = message.substring(message.indexOf('QN'));
         const formatted = subStr.replace(/,/g, ';');
         const parts = formatted.split('&&');
-
         if (parts.length < 2) throw new Error('数据格式错误');
-
+        
         const baseParams = parts[0].split(';').reduce((map, param) => {
             const [key, value] = param.split('=');
             if (key) map[key] = value || null;
             return map;
         }, {});
-
-        const dataParams = parts[1].split(';').reduce((map, param) => {
+        
+        const dataParams = {};
+        const dataParamsFlag = {};
+        
+        parts[1].split(';').forEach(param => {
             const [key, value] = param.split('=');
-            if (key) map[key] = value || null;
-            return map;
-        }, {});
+            if (key) {
+                if (key.endsWith('-Flag')) {
+                    dataParamsFlag[key] = value || null;
+                } else {
+                    dataParams[key] = value || null;
+                }
+            }
+        });
 
-        return { baseParams, dataParams };
+        // 解析 dataParamsFlag
+        const flagMessage = parseDataParamsFlag(dataParamsFlag);
+        console.log('解析结果:', flagMessage);
+
+        // 通过 Server 酱发送消息
+        sendToServerChan(flagMessage);
+
+        return { baseParams, dataParams, dataParamsFlag };
     } catch (err) {
         console.error('HJ212 解析失败:', err.message);
         throw err;
     }
 }
+
 
 // 初始化数据库表后启动服务器
 createInitialTables().then(() => {
@@ -719,3 +732,185 @@ function writeLog(message) {
     fs.appendFileSync(logFilePath, message + '\n');
 
 }
+
+
+
+
+
+
+//定义文件
+
+const pollutantsMapping = {
+    "w00000": "污水",
+    "w01001": "pH 值",
+    "w01002": "色度",
+    "w01006": "溶解性总固体",
+    "w01009": "溶解氧",
+    "w01010": "水温",
+    "w01012": "悬浮物",
+    "w01014": "电导率",
+    "w01017": "五日生化需氧量",
+    "w01018": "化学需氧量",
+    "w01019": "高锰酸盐指数",
+    "w01020": "总有机碳",
+    "w02003": "粪大肠菌群",
+    "w02006": "细菌总数",
+    "w03001": "总 α 放射性",
+    "w03002": "总 β 放射性",
+    "w19001": "表面活性剂",
+    "w19002": "阴离子表面活性剂",
+    "w20012": "钡",
+    "w20023": "硼",
+    "w20038": "钴",
+    "w20061": "钼",
+    "w20089": "铊",
+    "w20092": "锡",
+    "w20111": "总汞",
+    "w20113": "烷基汞",
+    "w20115": "总镉",
+    "w20116": "总铬",
+    "w20117": "六价铬",
+    "w20119": "总砷",
+    "w20120": "总铅",
+    "w20121": "总镍",
+    "w20122": "总铜",
+    "w20123": "总锌",
+    "w20124": "总锰",
+    "w20125": "总铁",
+    "w20126": "总银",
+    "w20127": "总铍",
+    "w20128": "总硒",
+    "w20138": "铜",
+    "w20139": "锌",
+    "w20140": "硒",
+    "w20141": "砷",
+    "w20142": "汞",
+    "w20143": "镉",
+    "w20144": "铅",
+    "w21001": "总氮",
+    "w21003": "氨氮",
+    "w21004": "凯氏氮",
+    "w21006": "亚硝酸盐",
+    "w21007": "硝酸盐",
+    "w21011": "总磷",
+    "w21016": "氰化物",
+    "w21017": "氟化物",
+    "w21019": "硫化物",
+    "w21022": "氯化物",
+    "w21038": "硫酸盐",
+    "w22001": "石油类",
+    "w23002": "挥发酚",
+    "w25043": "苯并[α]芘",
+    "w33001": "六六六",
+    "w33007": "滴滴涕",
+    "w99001": "有机氮",
+    "a00000": "废气",
+    "a01001": "温度",
+    "a01002": "湿度",
+    "a01006": "气压",
+    "a01007": "风速",
+    "a01008": "风向",
+    "a01010": "林格曼黑度",
+    "a01011": "烟气流速",
+    "a01012": "烟气温度",
+    "a01013": "烟气压力",
+    "a01014": "烟气湿度",
+    "a01015": "制冷温度",
+    "a01016": "烟道截面积",
+    "a01017": "烟气动压",
+    "a01901": "垃圾焚烧炉膛内焚烧平均温度",
+    "a01902": "垃圾焚烧炉膛内DCS温度",
+    "a05001": "二氧化碳",
+    "a05002": "甲烷",
+    "a05008": "三氯一氟甲烷",
+    "a05009": "二氯二氟甲烷",
+    "a05013": "三氯三氟乙烷",
+    "a19001": "氧气含量",
+    "a20007": "砷",
+    "a20016": "铍及其化合物",
+    "a20025": "镉及其化合物",
+    "a20026": "镉",
+    "a20043": "铅及其化合物",
+    "a20044": "铅",
+    "a20057": "汞及其化合物",
+    "a20058": "汞",
+    "a20063": "镍及其化合物",
+    "a20091": "锡及其化合物",
+    "a21001": "氨（氨气）",
+    "a21002": "氮氧化物",
+    "a21003": "一氧化氮",
+    "a21004": "二氧化氮",
+    "a21005": "一氧化碳",
+    "a21017": "氰化物",
+    "a21018": "氟化物",
+    "a21022": "氯气",
+    "a21024": "氯化氢",
+    "a21026": "二氧化硫",
+    "a21028": "硫化氢",
+    "a23001": "酚类",
+    "a24003": "二氯甲烷",
+    "a24004": "三氯甲烷",
+    "a24005": "四氯甲烷",
+    "a24006": "二溴一氯甲烷",
+    "a24007": "一溴二氯甲烷",
+    "a24008": "溴甲烷",
+    "a24009": "三溴甲烷",
+    "a24015": "氯乙烷",
+    "a24016": "1,1-二氯乙烷",
+    "a24017": "1,2-二氯乙烷",
+    "a24018": "1,1,1-三氯乙烷",
+    "a24019": "1,1,2-三氯乙烷",
+    "a24020": "1,1,2,2-四氯乙烷",
+    "a24027": "1,2-二氯丙烷",
+    "a24034": "1,2-二溴乙烷",
+    "a24036": "环己烷",
+    "a24042": "正己烷",
+    "a24043": "正庚烷",
+    "a24046": "氯乙烯",
+    "a24047": "1,1-二氯乙烯",
+    "a24049": "三氯乙烯",
+    "a24050": "四氯乙烯",
+    "a24053": "丙烯",
+    "a24054": "1,3-二氯丙烯",
+    "a24072": "1,4-二恶烷",
+    "a24078": "1,3-丁二烯",
+    "a24087": "碳氢化合物",
+    "a24088": "非甲烷总烃",
+    "a24099": "氯甲烷",
+    "a24110": "反式-1,2-二氯乙烯",
+    "a24111": "顺式-1,2-二氯乙烯",
+    "a24112": "反式-1,3-二氯丙烯",
+    "a24113": "六氯-1,3-丁二烯",
+    "a25002": "苯",
+    "a25003": "甲苯",
+    "a25004": "乙苯",
+    "a25005": "二甲苯",
+    "a25006": "1,2-二甲基苯",
+    "a25007": "1,3-二甲基苯",
+    "a25008": "1,4-二甲基苯",
+    "a25010": "氯苯",
+    "a25011": "1,2-二氯苯",
+    "a25012": "1,3-二氯苯",
+    "a25013": "1,4-二氯苯",
+    "a25014": "三氯苯",
+    "a25017": "四氯苯",
+    "a25018": "苯并[a]芘",
+    "a25019": "苯并(b)芘",
+    "a25020": "苯并(k)芘",
+    "a25021": "二噁英",
+    "a25022": "二甲基苯",
+    "a25023": "乙苯",
+    "a25024": "苯乙烯",
+    "a25025": "苯并[n]芘",
+    "a25026": "氯乙烯"
+};
+const flagMapping = {
+    "N": "在线监控（监测）仪器仪表工作正常",
+    "F": "在线监控（监测）仪器仪表停运",
+    "M": "在线监控（监测）仪器仪表处于维护期间产生的数据",
+    "S": "手工输入的设定值",
+    "D": "在线监控（监测）仪器仪表故障",
+    "C": "在线监控（监测）仪器仪表处于校准状态",
+    "T": "在线监控（监测）仪器仪表采样数值超过测量上限",
+    "B": "在线监控（监测）仪器仪表与数采仪通讯异常"
+};

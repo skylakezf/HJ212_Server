@@ -85,6 +85,7 @@
         <th>ID</th>
         <th>MN</th>
         <th>日期时间</th>
+        <th>污染物状态</th>
         <th>污染物数据</th>
       </tr>
     </thead>
@@ -157,10 +158,28 @@ function renderTable(results) {
   tableBody.innerHTML = '';
   results.forEach(item => {
     const row = document.createElement('tr');
+    
+    // 处理 dataParamsFlag 的显示
+    const dataParamsFlagDisplay = item.dataParamsFlag
+  ? Object.entries(item.dataParamsFlag)
+      .map(([key, value]) => {
+        // 提取污染物类型（例如 a00000）
+        const pollutantName = key.split('-')[0];
+        const displayName = pollutantsMapping[pollutantName] || pollutantName;
+        
+        // 获取状态描述
+        const flagDescription = flagMapping[value] || '未知状态';
+        
+        return `${displayName}状态：${flagDescription}`;
+      })
+      .join('<br>')
+  : 'N/A';
+
     row.innerHTML = `
       <td>${item.id || 'N/A'}</td>
       <td>${item.MN || 'N/A'}</td>
       <td>${item.date || 'N/A'}</td>
+      <td>${dataParamsFlagDisplay}</td>
       <td>
         ${Object.keys(item.pollutants).filter(key => key.includes('-Avg') || key.includes('-Max') || key.includes('-Min')|| key.includes('-Rtd'))
           .map(key => {
