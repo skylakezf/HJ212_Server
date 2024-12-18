@@ -457,8 +457,7 @@ function formatDataTime(dataTimeStr) {
     writeLog('数据包时间' + dataTimeStr);
     return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
 }
-
-//  HJ212 数据解析和存储逻辑
+//HJ212 解析存储信息发送逻辑
 function parseHJ212(data) {
     try {
         const message = data.toString('utf8');
@@ -491,15 +490,21 @@ function parseHJ212(data) {
         const flagMessage = parseDataParamsFlag(dataParamsFlag);
         console.log('解析结果:', flagMessage);
 
-        // 通过 Server 酱发送消息
-        sendToServerChan(flagMessage);
-        sendToPushDeer(flagMessage);
+        // Check if the last character of 'a00000-Flag' is not 'N'
+        const a00000Flag = dataParamsFlag['a00000-Flag'];
+        if (a00000Flag && a00000Flag.slice(-1) !== 'N') {
+            // 通过 Server 酱发送消息
+            sendToServerChan(flagMessage);
+            sendToPushDeer(flagMessage);
+        }
+
         return { baseParams, dataParams, dataParamsFlag };
     } catch (err) {
         console.error('HJ212 解析失败:', err.message);
         throw err;
     }
 }
+
 
 
 // 初始化数据库表后启动服务器

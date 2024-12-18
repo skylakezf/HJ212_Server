@@ -1,47 +1,24 @@
-const express = require('express');
-const fs = require('fs');
-const path = require('path');
-
-const app = express();
-const PORT = 3000;
-
-// 设置文件路径
-const filePath = path.join(__dirname, 'Key.txt');
-
-// 中间件：解析 JSON 请求
-app.use(express.json());
-
-// 读取 Key.txt 文件
-app.get('/Key.txt', (req, res) => {
-    fs.readFile(filePath, 'utf8', (err, data) => {
-        if (err) {
-            res.status(500).send('无法读取 Key.txt');
-            console.error(err);
-        } else {
-            res.send(data);
-        }
-    });
-});
-
-// 修改 Key.txt 文件
-app.post('/Key.txt', (req, res) => {
-    const { content } = req.body;
-    if (typeof content !== 'string') {
-        res.status(400).send('内容必须是字符串');
-        return;
+// 假设污染物数据对象
+let pollutants = {
+    'a00000-Flag': 'N',
+    'b00001-Flag': 'Y',
+    'c00002-Flag': 'N',
+    'd00003-Flag': 'Y',
+    // 其他污染物...
+  };
+  
+  // 正则表达式用于匹配以 '-Flag' 结尾的污染物键
+  let regex = /^(.*)-Flag$/; // 匹配类似 'a00000-Flag' 的字符串
+  
+  // 遍历污染物对象
+  for (let key in pollutants) {
+    if (regex.test(key)) {
+      let status = pollutants[key]; // 获取状态值
+      if (status === 'N') {
+        console.log(`污染物 ${key} 的状态是 N`);
+      } else {
+        console.log(`污染物 ${key} 的状态不是 N`);
+      }
     }
-
-    fs.writeFile(filePath, content, 'utf8', (err) => {
-        if (err) {
-            res.status(500).send('无法写入 Key.txt');
-            console.error(err);
-        } else {
-            res.send('Key.txt 内容已更新');
-        }
-    });
-});
-
-// 启动服务器
-app.listen(PORT, () => {
-    console.log(`服务器运行在 http://localhost:${PORT}`);
-});
+  }
+  
