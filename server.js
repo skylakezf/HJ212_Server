@@ -5,6 +5,7 @@ const mysql = require('mysql2');
 const fs = require('fs');
 const path = require('path');
 const scSend = require('serverchan-sdk');
+const { log } = require('console');
 
 
 const port = 8080;
@@ -177,16 +178,13 @@ CREATE TABLE IF NOT EXISTS received_2031_data (
                 console.log('数据库表createReceived2031DataTable已存在');
                 resolve();
             });
-
-
-
         });
     });
 }
 writeLog('服务器启动日期为' + new Date());
 async function saveParsedData(parsedData, sourceIp, rawData) {
     const { baseParams, dataParams, dataParamsFlag = {} } = parsedData;
-    console.log(parsedData)
+    // console.log(parsedData)
     const MN = baseParams['MN'];
     const CN = baseParams['CN'];
     const dataTimeStr = dataParams['DataTime'];
@@ -372,7 +370,7 @@ function getPushDeernKey(callback) {
 
 function sendToServerChan(message) {
     if (message === lastSentMessage) {
-        console.log('消息未变化');
+        console.log('消息未变化 serverChan');
         return; // 跳过发送
     }
 
@@ -404,7 +402,7 @@ function sendToServerChan(message) {
 }
 function sendToPushDeer(message) {
     if (message === lastSentMessage) {
-        console.log('消息未变化');
+        console.log('消息未变化 PushDeer');
         return; // Skip if the message hasn't changed
     }
 
@@ -488,7 +486,7 @@ function parseHJ212(data) {
 
         // 解析 dataParamsFlag
         const flagMessage = parseDataParamsFlag(dataParamsFlag);
-        console.log('解析结果:', flagMessage);
+        console.log('解析结果污染物:', flagMessage);
 
         // Check if the last character of 'a00000-Flag' is not 'N'
         const a00000Flag = dataParamsFlag['a00000-Flag'];
@@ -496,6 +494,7 @@ function parseHJ212(data) {
             // 通过 Server 酱发送消息
             sendToServerChan(flagMessage);
             sendToPushDeer(flagMessage);
+            lastSentMessage = flagMessage;
         }
 
         return { baseParams, dataParams, dataParamsFlag };
@@ -1046,6 +1045,7 @@ const pollutantsMapping = {
     "a25025": "苯并[n]芘",
     "a25026": "氯乙烯"
 };
+
 const flagMapping = {
     "N": "在线监控（监测）仪器仪表工作正常",
     "F": "在线监控（监测）仪器仪表停运",
