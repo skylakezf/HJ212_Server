@@ -503,25 +503,20 @@ function parseHJ212(data) {
         // 检查并发送消息逻辑
         Object.entries(dataParamsFlag).forEach(([key, value]) => {
             // 仅处理以 '-Flag' 结尾的字段
-            console.log(dataParamsFlag)
-
             const hasNonNFlag = Object.entries(dataParamsFlag).some(([key, value]) => {
                 return key.endsWith('-Flag') && value && value.slice(-1) !== 'N';
             });
             
             if (hasNonNFlag) {
                 // 生成带 MN 的 flagMessage
-                const flagMessageWithMN = `${flagMessage}`;
-
+                const sendMessage = `${flagMessage}_编号_${mnValue}`;
                 // 发送消息
-                sendToServerChan(flagMessageWithMN);
-                sendToPushDeer(flagMessageWithMN);
+                sendToServerChan(sendMessage);
+                sendToPushDeer(sendMessage);
 
                 // 更新最后发送的消息
-                lastSentMessage = flagMessageWithMN;
+                lastSentMessage = sendMessage;
                 // 查询并更新数据库
-
-
                 // 更新数据库
                 const updateQuery = `
                  UPDATE MM_last_update_data
@@ -543,13 +538,12 @@ function parseHJ212(data) {
             }else{
 
                  // 生成带 MN 的 flagMessage
-                 const flagMessageWithMN = `${flagMessage}`;
-
+                 const sendMessage = `${flagMessage}_编号_${mnValue}`;
                  
  
-                 // 更新最后发送的消息
-                 lastSentMessage = flagMessageWithMN;
-                 // 查询并更新数据库
+             // 更新最后发送的消息
+             lastSentMessage = sendMessage;
+             // 查询并更新数据库
  
  
                  // 更新数据库
@@ -1187,7 +1181,7 @@ const pollutantsMapping = {
 };
 
 const flagMapping = {
-    "N": "在线监控（监测）仪器仪表工作正常",
+    "N": "正常",
     "F": "在线监控（监测）仪器仪表停运",
     "M": "在线监控（监测）仪器仪表处于维护期间产生的数据",
     "S": "手工输入的设定值",
