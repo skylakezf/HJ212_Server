@@ -45,7 +45,9 @@ function createInitialTables() {
             const createMM_last_update_dataTable = `
                 CREATE TABLE IF NOT EXISTS MM_last_update_data (
                     MN VARCHAR(50)  PRIMARY KEY,                    -- 数据采集仪的唯一标识
-                    last_Update_date DATETIME          -- 数据接收日期（来自DataTime）
+                    last_Update_date DATETIME,          -- 数据接收日期（来自DataTime）
+                    Address VARCHAR(50),          --  地址
+                    Exceeded_Flag VARCHAR(5)                -- 状态标记
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             `;
             connection.query(createMM_last_update_dataTable, (err) => {
@@ -197,7 +199,7 @@ async function saveParsedData(parsedData, sourceIp, rawData) {
     const pollutants = JSON.stringify(dataParams);
     const dataParamsFlagStr = JSON.stringify(dataParamsFlag);
 
-    
+
     const insertData = (tableName) => {
         const query = `
             INSERT INTO ${tableName} (MN, CN, date, pollutants, source_ip, last_update, raw_data, dataParamsFlag)
@@ -258,12 +260,12 @@ async function saveParsedData(parsedData, sourceIp, rawData) {
 
 function parseDataParamsFlag(dataParamsFlag) {
     const result = [];
-    
+
     Object.entries(dataParamsFlag).forEach(([key, value]) => {
         const pollutantCode = key.split('-')[0]; // 提取污染物编码
         const pollutant = pollutantsMapping[pollutantCode] || `未知污染物(${pollutantCode})`;
         const flag = flagMapping[value] || `未知状态(${value})`;
-        
+
         result.push(`${pollutant}_状态_${flag}`);
     });
 
@@ -419,17 +421,17 @@ function sendToPushDeer(message) {
             text: '设备信息警告',  // Title of the push message
             desp: message,         // The message content
         })
-        .then((response) => {
-            if (response.data.code === 200) {
-                console.log('设备警告消息发送成功');
-                lastSentMessage = message; // Update the last sent message
-            } else {
-                console.error('设备警告消息发送失败:', response.data);
-            }
-        })
-        .catch((err) => {
-            console.error('设备警告请求出错:', err.message);
-        });
+            .then((response) => {
+                if (response.data.code === 200) {
+                    console.log('设备警告消息发送成功');
+                    lastSentMessage = message; // Update the last sent message
+                } else {
+                    console.error('设备警告消息发送失败:', response.data);
+                }
+            })
+            .catch((err) => {
+                console.error('设备警告请求出错:', err.message);
+            });
     });
 }
 
@@ -455,32 +457,42 @@ function formatDataTime(dataTimeStr) {
     writeLog('数据包时间' + dataTimeStr);
     return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
 }
-//HJ212 解析存储信息发送逻辑
 function parseHJ212(data) {
     try {
+
+
         const message = data.toString('utf8');
         const subStr = message.substring(message.indexOf('QN'));
         const formatted = subStr.replace(/,/g, ';');
         const parts = formatted.split('&&');
         if (parts.length < 2) throw new Error('数据格式错误');
-        
+
+        // 解析 baseParams
         const baseParams = parts[0].split(';').reduce((map, param) => {
             const [key, value] = param.split('=');
             if (key) map[key] = value || null;
             return map;
+
         }, {});
-        
+
+        // 提取 MN 值
+        const mnValue = baseParams['MN'] || '未知设备';
+        // 解析 dataParams 和 dataParamsFlag
         const dataParams = {};
         const dataParamsFlag = {};
-        
+
+
         parts[1].split(';').forEach(param => {
             const [key, value] = param.split('=');
             if (key) {
                 if (key.endsWith('-Flag')) {
                     dataParamsFlag[key] = value || null;
+
                 } else {
                     dataParams[key] = value || null;
+
                 }
+
             }
         });
 
@@ -488,14 +500,78 @@ function parseHJ212(data) {
         const flagMessage = parseDataParamsFlag(dataParamsFlag);
         console.log('解析结果污染物:', flagMessage);
 
-        // Check if the last character of 'a00000-Flag' is not 'N'
-        const a00000Flag = dataParamsFlag['a00000-Flag'];
-        if (a00000Flag && a00000Flag.slice(-1) !== 'N') {
-            // 通过 Server 酱发送消息
-            sendToServerChan(flagMessage);
-            sendToPushDeer(flagMessage);
-            lastSentMessage = flagMessage;
-        }
+        // 检查并发送消息逻辑
+        Object.entries(dataParamsFlag).forEach(([key, value]) => {
+            // 仅处理以 '-Flag' 结尾的字段
+            console.log(dataParamsFlag)
+
+            const hasNonNFlag = Object.entries(dataParamsFlag).some(([key, value]) => {
+                return key.endsWith('-Flag') && value && value.slice(-1) !== 'N';
+            });
+            
+            if (hasNonNFlag) {
+                // 生成带 MN 的 flagMessage
+                const flagMessageWithMN = `${flagMessage}`;
+
+                // 发送消息
+                sendToServerChan(flagMessageWithMN);
+                sendToPushDeer(flagMessageWithMN);
+
+                // 更新最后发送的消息
+                lastSentMessage = flagMessageWithMN;
+                // 查询并更新数据库
+
+
+                // 更新数据库
+                const updateQuery = `
+                 UPDATE MM_last_update_data
+                 SET Exceeded_Flag = ?, last_Update_date = NOW()
+                WHERE MN = ?;
+                 `;
+
+
+                pool.query(updateQuery, [value, mnValue], (err, results) => {
+                    if (err) {
+                        console.error(`数据库更新失败: MN=${mnValue}, Exceeded=${value}`, err.message);
+                    } else if (results.affectedRows === 0) {
+                        console.warn(`数据库未找到匹配的 MN=${mnValue}，无法更新 Exceeded`);
+                    } else {
+                        console.info(`成功更新数据库: MN=${mnValue}, Exceeded=${value}`);
+                    }
+                });
+
+            }else{
+
+                 // 生成带 MN 的 flagMessage
+                 const flagMessageWithMN = `${flagMessage}`;
+
+                 
+ 
+                 // 更新最后发送的消息
+                 lastSentMessage = flagMessageWithMN;
+                 // 查询并更新数据库
+ 
+ 
+                 // 更新数据库
+                 const updateQuery = `
+                  UPDATE MM_last_update_data
+                  SET Exceeded_Flag = ?, last_Update_date = NOW()
+                 WHERE MN = ?;
+                  `;
+ 
+ 
+                 pool.query(updateQuery, [value, mnValue], (err, results) => {
+                     if (err) {
+                         console.error(`数据库更新失败: MN=${mnValue}, Exceeded=${value}`, err.message);
+                     } else if (results.affectedRows === 0) {
+                         console.warn(`数据库未找到匹配的 MN=${mnValue}，无法更新 Exceeded`);
+                     } else {
+                         console.info(`成功更新数据库: MN=${mnValue}, Exceeded=${value}`);
+                     }
+                 });
+ 
+            }
+        });
 
         return { baseParams, dataParams, dataParamsFlag };
     } catch (err) {
@@ -521,8 +597,8 @@ createInitialTables().then(() => {
     app.get('/key', (req, res) => res.sendFile(path.join(__dirname, 'public', 'key.html')));
     app.get('/WEB_js/chart.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'chart.js')));
     app.get('/WEB_js/pollutants_map.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'pollutants_map.js')));
-    
-    
+
+
     app.get('/getIP', (req, res) => {
         const os = require('os');
         const interfaces = os.networkInterfaces();
@@ -566,146 +642,82 @@ createInitialTables().then(() => {
 
     // 使用查询特定的数据
 
-    app.post('/LookupData', express.json(), (req, res) => {
+
+    app.post('/LookupData', express.json(), async (req, res) => {
         const { MN, Time, Flag, IP, CN } = req.body;
 
-        // 构建基础 SQL 查询
-        //弃用 let query = 'SELECT * FROM received_data WHERE 1=1';
-        let query2011 = 'SELECT * FROM received_2011_data WHERE 1=1';
-        let query2051 = 'SELECT * FROM received_2051_data WHERE 1=1';
-        let query2061 = 'SELECT * FROM receive_2061d_data WHERE 1=1';
-        let query2031 = 'SELECT * FROM receive_2031d_data WHERE 1=1';
+        // Validate CN parameter
+        const validCNs = ['2011', '2031', '2051', '2061'];
+        if (!CN || !validCNs.includes(CN)) {
+            return res.status(400).json({
+                error: 'Invalid or missing CN parameter. Must be one of: 2011, 2031, 2051, 2061'
+            });
+        }
+
+        // Map CN to table name
+        const tableNames = {
+            '2011': 'received_2011_data',
+            '2031': 'received_2031_data',
+            '2051': 'received_2051_data',
+            '2061': 'received_2061_data'
+        };
+
+        // Build query and params
+        let query = `SELECT * FROM ${tableNames[CN]} WHERE 1=1`;
         const queryParams = [];
 
-        // 动态添加查询条件
-        if (CN == "2011") {
-            if (MN) {
-                query2011 += ' AND MN = ?';
-                queryParams.push(MN);
+        // Define conditions mapping
+        const conditions = {
+            MN: { value: MN, clause: 'MN = ?' },
+            IP: { value: IP, clause: 'source_ip = ?' },
+            CN: { value: CN, clause: 'CN = ?' },
+            Time: { value: Time, clause: 'date = ?' },
+            Flag: {
+                value: Flag,
+                clause: 'JSON_EXTRACT(pollutants, ?) = ?',
+                paramProcessor: (flag) => [`$.${flag}`, flag]
             }
-            if (IP) {
-                query2011 += ' AND source_ip = ?';
-                queryParams.push(IP);
-            }
-            if (CN) {
-                query2011 += ' AND CN = ?';
-                queryParams.push(CN);
+        };
 
-            }
-            if (Time) {
-                query2011 += ' AND date = ?';
-                queryParams.push(Time); // 确保前端传来的 Time 格式为 'YYYY-MM-DD HH:MM:SS'
-            }
-            if (Flag) {
-                //有问题
-                query2011 += ' AND JSON_EXTRACT(pollutants, ?) = ?';
-                queryParams.push(`$.${Flag}`, Flag);
+        // Add conditions dynamically
+        for (const [key, condition] of Object.entries(conditions)) {
+            if (condition.value) {
+                query += ` AND ${condition.clause}`;
+                if (condition.paramProcessor) {
+                    queryParams.push(...condition.paramProcessor(condition.value));
+                } else {
+                    queryParams.push(condition.value);
+                }
             }
         }
 
-
-        if (CN == "2051") {
-            if (MN) {
-                query2051 += ' AND MN = ?';
-                queryParams.push(MN);
-            }
-            if (IP) {
-                query2051 += ' AND source_ip = ?';
-                queryParams.push(IP);
-            }
-            if (CN) {
-                query2051 += ' AND CN = ?';
-                queryParams.push(CN);
-
-            }
-            if (Time) {
-                query2051 += ' AND date = ?';
-                queryParams.push(Time); // 确保前端传来的 Time 格式为 'YYYY-MM-DD HH:MM:SS'
-            }
-            if (Flag) {
-                //有问题
-                query2051 += ' AND JSON_EXTRACT(pollutants, ?) = ?';
-                queryParams.push(`$.${Flag}`, Flag);
-            }
-        }
-
-
-        if (CN == "2061") {
-            if (MN) {
-                query2061 += ' AND MN = ?';
-                queryParams.push(MN);
-            }
-            if (IP) {
-                query2061 += ' AND source_ip = ?';
-                queryParams.push(IP);
-            }
-            if (CN) {
-                query2061 += ' AND CN = ?';
-                queryParams.push(CN);
-
-            }
-            if (Time) {
-                query2061 += ' AND date = ?';
-                queryParams.push(Time); // 确保前端传来的 Time 格式为 'YYYY-MM-DD HH:MM:SS'
-            }
-            if (Flag) {
-                //有问题
-                query2051 += ' AND JSON_EXTRACT(pollutants, ?) = ?';
-                queryParams.push(`$.${Flag}`, Flag);
-            }
-        }
-
-        if (CN == "2031") {
-            if (MN) {
-                query2031 += ' AND MN = ?';
-                queryParams.push(MN);
-            }
-            if (IP) {
-                query2031 += ' AND source_ip = ?';
-                queryParams.push(IP);
-            }
-            if (CN) {
-                query2031 += ' AND CN = ?';
-                queryParams.push(CN);
-
-            }
-            if (Time) {
-                query2031 += ' AND date = ?';
-                queryParams.push(Time); // 确保前端传来的 Time 格式为 'YYYY-MM-DD HH:MM:SS'
-            }
-            if (Flag) {
-                //有问题
-                query2031 += ' AND JSON_EXTRACT(pollutants, ?) = ?';
-                queryParams.push(`$.${Flag}`, Flag);
-            }
-        }
-
-        // 如果没有提供有效的查询条件，返回错误
+        // Validate if any search criteria provided
         if (queryParams.length === 0) {
-            res.status(400).json({ error: '至少需要提供一个查询条件 (MN、Time、Flag、IP、CN)' });
-            return;
+            return res.status(400).json({
+                error: '至少需要提供一个查询条件 (MN、Time、Flag、IP、CN)'
+            });
         }
 
-        // 执行查询
-        pool.query(query, queryParams, (err, results) => {
-            if (err) {
-                console.error('查询失败:', err);
-                res.status(500).json({ error: '查询失败，请检查查询条件或稍后再试' });
-                return;
+        try {
+            // Execute query using promise wrapper for cleaner error handling
+            const [results] = await pool.promise().query(query, queryParams);
+
+            if (!results.length) {
+                return res.status(400).json({ error: '没有查询到数据' });
             }
-            if (results == '') {
-                console.error('查询为空:', err);
-                res.status(400).json({ error: '没有查询到数据' });
-                return;
-            }
-            // 返回查询结果
+
             res.json({ data: results });
-        });
+        } catch (err) {
+            console.error('查询失败:', err);
+            res.status(500).json({
+                error: '查询失败，请检查查询条件或稍后再试'
+            });
+        }
     });
 
-      // 获取连接过平台的服务器最后上传时间
-      app.get('/getMN_lastUpdate_Data', (req, res) => {
-      
+    // 获取连接过平台的服务器最后上传时间
+    app.get('/getMN_lastUpdate_Data', (req, res) => {
+
         const querySql = `SELECT * FROM MM_last_update_data`;
         pool.query(querySql, (err, results) => {
             if (err) {
@@ -716,6 +728,38 @@ createInitialTables().then(() => {
             res.json({ Last_MN_TIME: results });
         });
     });
+
+
+    // 更新设备地址
+app.post('/updateDeviceAddress', (req, res) => {
+    const { MN, Address } = req.body;
+
+    if (!MN || !Address) {
+        res.status(400).json({ error: '设备编号 (MN) 和地址 (Address) 是必需的' });
+        return;
+    }
+
+    const updateQuery = `
+        UPDATE MM_last_update_data
+        SET Address = ?
+        WHERE MN = ?;
+    `;
+
+    pool.query(updateQuery, [Address, MN], (err, results) => {
+        if (err) {
+            console.error(`数据库更新失败: MN=${MN}, Address=${Address}`, err.message);
+            res.status(500).json({ error: '更新地址失败' });
+            return;
+        }
+
+        if (results.affectedRows === 0) {
+            res.status(404).json({ error: `未找到设备编号为 ${MN} 的设备` });
+        } else {
+            res.json({ success: true, message: `设备地址已成功更新: MN=${MN}, Address=${Address}` });
+        }
+    });
+});
+
 
     app.post('/LookupData_10', express.json(), (req, res) => {
         const { MN, Time, Flag, IP, CN } = req.body;

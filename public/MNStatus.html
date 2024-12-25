@@ -23,6 +23,22 @@
         th {
             background-color: #f4f4f4;
         }
+        input {
+            padding: 5px;
+            font-size: 14px;
+        }
+        button {
+            padding: 5px 10px;
+            font-size: 14px;
+            cursor: pointer;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
     </style>
 </head>
 <body>
@@ -33,13 +49,15 @@
                 <th>MN</th>
                 <th>最后数据上传时间</th>
                 <th>状态</th>
+                <th>最后上传数据状态</th>
+                <th>设备地址</th>
             </tr>
         </thead>
         <tbody id="mn-table-body">
         </tbody>
     </table>
 
-    <canvas id="mnPieChart" width="400" height="400"></canvas>
+    <canvas id="mnPieChart" width="400px" height="400px"></canvas>
 
     <script>
         let chartInstance = null;
@@ -56,13 +74,12 @@
         }
 
         async function fetchNTPTime() {
-    try {
-        return new Date(); // Fallback to local system time
-    } catch (error) {
-        console.error('获取本地时间错误')
-    }
-}
-
+            try {
+                return new Date(); // Fallback to local system time
+            } catch (error) {
+                console.error('获取本地时间错误');
+            }
+        }
 
         async function updateTable(devices) {
             const tableBody = document.getElementById('mn-table-body');
@@ -72,12 +89,12 @@
 
             const onlineDevices = devices.filter(device => {
                 const lastUpdate = new Date(device.last_Update_date);
-                return (nowUTC - lastUpdate) <= 10000; // 10 seconds in milliseconds
+                return (nowUTC - lastUpdate) <= 60000; // 60 seconds in milliseconds
             });
 
             devices.forEach(device => {
                 const lastUpdate = new Date(device.last_Update_date);
-                const isOnline = (nowUTC - lastUpdate) <= 10000;
+                const isOnline = (nowUTC - lastUpdate) <= 60000;
 
                 const row = document.createElement('tr');
                 row.innerHTML = `
@@ -86,11 +103,48 @@
                     <td style="color: ${isOnline ? 'green' : 'red'};">
                         ${isOnline ? '在线' : '离线'}
                     </td>
+                    <td>${device.Exceeded_Flag}</td>
+                    <td>
+                        <input type="text" value="${device.Address || ''}" id="address-${device.MN}" />
+                        <button onclick="updateAddress('${device.MN}')">更新</button>
+                    </td>
                 `;
                 tableBody.appendChild(row);
             });
 
             return onlineDevices.length;
+        }
+
+        async function updateAddress(MN) {
+            const addressInput = document.getElementById(`address-${MN}`);
+            const newAddress = addressInput.value.trim();
+
+            if (!newAddress) {
+                alert('地址不能为空');
+                return;
+            }
+
+            try {
+                const response = await fetch('/updateDeviceAddress', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ MN, Address: newAddress }),
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`设备地址更新成功: ${newAddress}`);
+                    await refreshPage(); // 刷新页面以更新表格数据
+                } else {
+                    alert(`设备地址更新失败: ${result.error}`);
+                }
+            } catch (error) {
+                console.error('更新设备地址时发生错误:', error);
+                alert('设备地址更新失败，请稍后重试');
+            }
         }
 
         function updatePieChart(onlineCount, totalCount) {
@@ -106,7 +160,7 @@
                     labels: ['在线设备', '离线设备'],
                     datasets: [{
                         data: [onlineCount, totalCount - onlineCount],
-                        backgroundColor: ['#4caf50', '#f44336'],
+                        backgroundColor: ['aquamarine', 'brown'],
                     }]
                 },
                 options: {

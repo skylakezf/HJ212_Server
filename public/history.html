@@ -28,7 +28,7 @@
     <h1>接收数据历史记录</h1>
     <div>
         <button id="prevPage">上一页</button>
-        <span id="currentPage">1</span> / <span id="totalPages">0</span>
+        <span id="currentPage">1</span> / <span id="totalPages"></span>
         <button id="nextPage">下一页</button>
     </div>
     <table id="historyTable">
@@ -77,7 +77,7 @@
 
         // 获取总页数的函数，这里暂时简单模拟为一个固定值，实际中需要根据后端返回的总数据量等信息来准确计算
         function getTotalPages() {
-            return 10; // 假设总共有10页，实际需和后端配合获取准确值
+            return 100; // 假设总共有100页，实际需和后端配合获取准确值
         }
 
         document.getElementById('prevPage').addEventListener('click', () => {
