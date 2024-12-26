@@ -266,7 +266,7 @@ function parseDataParamsFlag(dataParamsFlag) {
         const pollutant = pollutantsMapping[pollutantCode] || `未知污染物(${pollutantCode})`;
         const flag = flagMapping[value] || `未知状态(${value})`;
 
-        result.push(`${pollutant}_状态_${flag}`);
+        result.push(`${pollutant}_状态__${flag}`);
     });
 
     return result.join('; ');
@@ -1183,10 +1183,10 @@ const pollutantsMapping = {
 const flagMapping = {
     "N": "正常",
     "F": "在线监控（监测）仪器仪表停运",
-    "M": "在线监控（监测）仪器仪表处于维护期间产生的数据",
-    "S": "手工输入的设定值",
-    "D": "在线监控（监测）仪器仪表故障",
-    "C": "在线监控（监测）仪器仪表处于校准状态",
-    "T": "在线监控（监测）仪器仪表采样数值超过测量上限",
-    "B": "在线监控（监测）仪器仪表与数采仪通讯异常"
+    "M": "在线监控（监测）仪器仪表处于维护期间产生的数据!",
+    "S": "手工输入的设定值！",
+    "D": "在线监控（监测）仪器仪表故障！",
+    "C": "在线监控（监测）仪器仪表处于校准状态！",
+    "T": "在线监控（监测）仪器仪表采样数值超过测量上限！",
+    "B": "在线监控（监测）仪器仪表与数采仪通讯异常！"
 };
